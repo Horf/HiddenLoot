@@ -11,21 +11,7 @@ namespace LootHook
     bool ProcessItem(RE::TESBoundObject* a_this, bool originalResult)
     {
         if (!Settings::bEnableMod) return originalResult;
-
         if (!originalResult) return false;
-
-        auto ui = RE::UI::GetSingleton();
-        if (ui) {
-            if (ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::GiftMenu::MENU_NAME))
-            {
-                return true;
-            }
-        }
 
         bool isWeapon = a_this->IsWeapon();
         bool isArmor = false;
@@ -98,14 +84,36 @@ namespace LootHook
         }
         if (!shouldHide) return true;
 
+        auto ui = RE::UI::GetSingleton();
+        if (ui) {
+            if (ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) ||
+                ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
+                ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) ||
+                ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
+                ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) ||
+                ui->IsMenuOpen(RE::GiftMenu::MENU_NAME))
+            {
+                return true;
+            }
+        }
+
         auto crosshair = RE::CrosshairPickData::GetSingleton();
         if (crosshair && crosshair->target) {
             auto targetRef = crosshair->target->get();
 			if (!targetRef) return true;
+
             auto actor = targetRef->As<RE::Actor>();
             if (!actor) return true;
 
-            if (actor->IsDead()) {
+            bool isPickpocketing = false;
+            if (ui && ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME)) {
+                if (!actor->IsDead()) {
+                    isPickpocketing = true;
+                }
+            }
+			bool isValidTarget = actor->IsDead() || (Settings::bIncludePickpocket && isPickpocketing);
+
+            if (isValidTarget) {
                 auto changes = actor->GetInventoryChanges();
 
                 bool isQuestObject = false;
@@ -119,6 +127,7 @@ namespace LootHook
                                 break;
                             }
                             if (entry->IsWorn()) isWorn = true;
+                            break;
                         }
                     }
                 }

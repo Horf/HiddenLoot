@@ -24,6 +24,9 @@ namespace Settings
     inline bool bUnlootableWeapons = false;
     inline bool bWeaponsWornOnly = true;
 
+    // pickpocket
+    inline bool bIncludePickpocket = false;
+
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
         if (std::string::npos == first) return "";
@@ -70,6 +73,7 @@ namespace Settings
                     else if (key == "bClothingWornOnly") bClothingWornOnly = isTrue;
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
+					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
                 }
             }
         }
@@ -83,13 +87,13 @@ namespace Settings
                 file << "[Armor]\n";
                 file << "bUnlootableArmor=true\n\n";
 
-                file << "; Specific body parts only (Takes effect if bUnlootableArmor=false)\n";
+                file << "; Specific body slots only (Takes effect if bUnlootableArmor=false)\n";
                 file << "bUnlootableArmorHead=false\t; Includes Head, Hair and Circlets\n";
                 file << "bUnlootableArmorChest=false\t; Includes Body, Chest and Back\n";
                 file << "bUnlootableArmorArms=false\t; Includes Hands, Arms, Forearms and Shoulder\n";
                 file << "bUnlootableArmorLegs=false\t; Includes Feet, Leg, Calves and Pelvis\n\n";
 
-                file << "; Hides shields.\n";
+                file << "; Hides shields\n";
                 file << "bUnlootableArmorShield=true\n\n";
 
                 file << "; If true, only hides the armor/shield types the NPC is currently wearing.\n";
@@ -104,7 +108,12 @@ namespace Settings
 
                 file << "[Weapons]\n";
                 file << "bUnlootableWeapons=false\n";
-                file << "bWeaponsWornOnly=true\n";
+                file << "bWeaponsWornOnly=true\n\n\n";
+
+
+                file << "[Pickpocket]\n";
+                file << "; If true, settings apply also while pickpocketing NPCs.\n";
+                file << "bIncludePickpocket=false\n";
             }
             else {
                 logs::error("Error during generating INI file!");
