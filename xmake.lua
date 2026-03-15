@@ -17,7 +17,7 @@ target("HiddenLoot")
     add_rules("commonlibsse-ng.plugin", {
         name = "HiddenLoot",
         author = "PRieST47",
-        description = "Hides Armor, Shields, Clothing and/or Weapons while looting dead NPCs"
+        description = "Hides Armor, Shields, Clothing and/or Weapons while looting NPCs"
     })
 
     -- add src files
