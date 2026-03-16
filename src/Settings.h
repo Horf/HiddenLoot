@@ -133,4 +133,48 @@ namespace Settings
             }
         }
     }
+    inline void Save()
+    {
+        std::filesystem::path iniPath = "Data/SKSE/Plugins/HiddenLoot.ini";
+        std::ofstream file(iniPath);
+        if (file.is_open()) {
+            file << "[General]\n";
+            file << "bEnableMod=" << (bEnableMod ? "true" : "false") << "\n\n";
+
+            file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
+            file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n\n";
+
+
+            file << "[Armor]\n";
+            file << "bUnlootableArmor=" << (bUnlootableArmor ? "true" : "false") << "\n\n";
+            
+            file << "; Specific body slots only (Takes effect if bUnlootableArmor=false)\n";
+            file << "bUnlootableArmorHead=" << (bUnlootableArmorHead ? "true" : "false") << "\t; Includes Head, Hair and Circlets\n";
+            file << "bUnlootableArmorChest=" << (bUnlootableArmorChest ? "true" : "false") << "\t; Includes Body, Chest and Back\n";
+            file << "bUnlootableArmorArms=" << (bUnlootableArmorArms ? "true" : "false") << "\t; Includes Hands, Arms, Forearms and Shoulder\n";
+            file << "bUnlootableArmorLegs=" << (bUnlootableArmorLegs ? "true" : "false") << "\t; Includes Feet, Leg, Calves and Pelvis\n\n";
+
+            file << "; Hides shields\n";
+            file << "bUnlootableArmorShield=" << (bUnlootableArmorShield ? "true" : "false") << "\n\n";
+
+            file << "; If true, only hides the armor/shield types the NPC is currently wearing.\n";
+            file << "; Same goes for every other WornOnly option.\n";
+            file << "bArmorWornOnly=" << (bArmorWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Clothing]\n";
+            file << "bUnlootableClothing=" << (bUnlootableClothing ? "true" : "false") << "\n";
+            file << "bClothingWornOnly=" << (bClothingWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Weapons]\n";
+            file << "bUnlootableWeapons=" << (bUnlootableWeapons ? "true" : "false") << "\n";
+            file << "bWeaponsWornOnly=" << (bWeaponsWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Pickpocket]\n";
+            file << "; If true, settings apply also while pickpocketing NPCs.\n";
+            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n";
+        }
+    }
 }

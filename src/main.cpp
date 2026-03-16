@@ -1,4 +1,5 @@
 #include "LootHook.h"
+#include "MenuIntegration.h"
 
 SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 {
@@ -9,6 +10,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
     messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
             LootHook::Install();
+			MenuIntegration::Install();
         }
         });
     return true;
