@@ -8,18 +8,67 @@ namespace LootHook
     inline REL::Relocation<GetPlayable_t> original_ARMO_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
 
+    inline std::vector<RE::BGSKeyword*> cachedUniqueKeywords;
+
+    void CacheKeywords()
+    {
+        for (const auto& edid : Settings::uniqueKeywordEditorIDs) {
+            auto form = RE::TESForm::LookupByEditorID(edid);
+            if (form) {
+                if (auto keyword = form->As<RE::BGSKeyword>()) {
+                    cachedUniqueKeywords.push_back(keyword);
+                }
+            }
+        }
+    }
+
+    RE::Actor* GetTargetActor()
+    {
+        auto crosshair = RE::CrosshairPickData::GetSingleton();
+        if (!crosshair) return nullptr;
+
+        RE::RefHandle handle = 0;
+
+        if (REL::Module::IsVR()) {
+            const auto player = RE::PlayerCharacter::GetSingleton();
+            const auto& vrData = player->GetVRPlayerRuntimeData();
+            const auto hand = vrData.isRightHandMainHand ? 1 : 0;
+
+            if (crosshair->grabPickRef[hand]) handle = crosshair->grabPickRef[hand].native_handle();
+            else if (crosshair->targetActor[hand]) handle = crosshair->targetActor[hand].native_handle();
+            else if (crosshair->target[hand]) handle = crosshair->target[hand].native_handle();
+        }
+        else {
+            if (crosshair->target) handle = crosshair->target->native_handle();
+        }
+
+        if (handle == 0) return nullptr;
+
+        RE::NiPointer<RE::TESObjectREFR> refPtr;
+        if (RE::LookupReferenceByHandle(handle, refPtr)) {
+            auto ref = refPtr.get();
+            if (ref && ref->GetFormType() == RE::FormType::ActorCharacter) {
+                return static_cast<RE::Actor*>(ref);
+            }
+        }
+
+        return nullptr;
+    }
+
     bool ProcessItem(RE::TESBoundObject* a_this, bool originalResult)
     {
         if (!Settings::bEnableMod) return originalResult;
         if (!originalResult) return false;
 
+        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
+        if (a_this->HasKeywordInArray(cachedUniqueKeywords, false)) return true;
+
         bool isWeapon = a_this->IsWeapon();
-        bool isArmor = false;
-        bool isClothing = false;
+        bool isArmor = false, isClothing = false;
         bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
 
         if (a_this->IsArmor()) {
-            auto armor = a_this->As<RE::TESObjectARMO>();
+			auto armor = static_cast<RE::TESObjectARMO*>(a_this);
             auto CheckSlot = [&](RE::BIPED_MODEL::BipedObjectSlot a_slot) -> bool {
                 return armor->GetSlotMask().any(a_slot);
             };
@@ -97,48 +146,41 @@ namespace LootHook
             }
         }
 
-        auto crosshair = RE::CrosshairPickData::GetSingleton();
-        if (crosshair && crosshair->target) {
-            auto targetRef = crosshair->target->get();
-			if (!targetRef) return true;
+        auto actor = GetTargetActor();
+        if (!actor) return true;
 
-            auto actor = targetRef->As<RE::Actor>();
-            if (!actor) return true;
-
-            bool isPickpocketing = false;
-            if (ui && ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME)) {
-                if (!actor->IsDead()) {
-                    isPickpocketing = true;
-                }
+        bool isPickpocketing = false;
+        if (ui && ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME)) {
+            if (!actor->IsDead()) {
+                isPickpocketing = true;
             }
-			bool isValidTarget = actor->IsDead() || (Settings::bIncludePickpocket && isPickpocketing);
+        }
 
-            if (isValidTarget) {
-                auto changes = actor->GetInventoryChanges();
+        bool isValidTarget = actor->IsDead() || (Settings::bIncludePickpocket && isPickpocketing);
 
-                bool isQuestObject = false;
-                bool isWorn = false;
+        if (isValidTarget) {
+            auto changes = actor->GetInventoryChanges();
 
-                if (changes && changes->entryList) {
-                    for (auto* entry : *changes->entryList) {
-                        if (entry && entry->object == a_this) {
-                            if (entry->IsQuestObject()) {
-                                isQuestObject = true;
-                                break;
-                            }
-                            if (entry->IsWorn()) isWorn = true;
-                            break;
-                        }
+            bool isQuestObject = false;
+            bool isWorn = false;
+            bool foundInNPCInventory = false;
+
+            if (changes && changes->entryList) {
+                for (auto* entry : *changes->entryList) {
+                    if (entry && entry->object == a_this) {
+                        foundInNPCInventory = true;
+                        if (entry->IsQuestObject()) isQuestObject = true;
+                        if (entry->IsWorn()) isWorn = true;
+                        break;
                     }
                 }
-
-                if (isQuestObject) return true;
-
-                if (requireWorn) {
-                    if (isWorn) return false;
-                }
-                else return false;
             }
+            if (!foundInNPCInventory || isQuestObject)  return true;
+
+            if (requireWorn) {
+                if (isWorn) return false;
+            }
+            else return false;
         }
         return true;
     }
@@ -154,6 +196,8 @@ namespace LootHook
     void Install()
     {
         Settings::Load();
+
+        CacheKeywords();
 
         REL::Relocation<std::uintptr_t> armoVTable(RE::VTABLE_TESObjectARMO[0]);
         original_ARMO_GetPlayable = armoVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_ARMO_GetPlayable));

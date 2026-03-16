@@ -27,6 +27,15 @@ namespace Settings
     // pickpocket
     inline bool bIncludePickpocket = false;
 
+    // value & keyword filter 
+    inline float fValueThresholdForLoot = 1000.0f;
+    inline std::vector<std::string> uniqueKeywordEditorIDs = {
+    "VendorNoSale",
+    "MagicDisallowEnchanting",
+    "DaedricArtifact",
+    "MQ201ThalmorDisguise"
+    };
+
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
         if (std::string::npos == first) return "";
@@ -62,6 +71,7 @@ namespace Settings
                     bool isTrue = (value == "true" || value == "1");
 
                     if (key == "bEnableMod") bEnableMod = isTrue;
+                    else if (key == "fValueThresholdForLoot") fValueThresholdForLoot = std::stof(value);
                     else if (key == "bUnlootableArmor") bUnlootableArmor = isTrue;
                     else if (key == "bArmorWornOnly") bArmorWornOnly = isTrue;
                     else if (key == "bUnlootableArmorHead") bUnlootableArmorHead = isTrue;
@@ -81,7 +91,10 @@ namespace Settings
             std::ofstream file(iniPath);
             if (file.is_open()) {
                 file << "[General]\n";
-                file << "bEnableMod=true\n\n\n";
+                file << "bEnableMod=true\n\n";
+
+                file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
+                file << "fValueThresholdForLoot=1000.0\n\n\n";
 
 
                 file << "[Armor]\n";
