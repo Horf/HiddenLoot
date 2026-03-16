@@ -56,6 +56,10 @@ namespace MenuIntegration
 
     inline void Install()
     {
+        if (REL::Module::IsVR()) {
+            logs::info("VR detected. Skipping SKSE Menu Framework integration.");
+            return;
+        }
         if (SKSEMenuFramework::IsInstalled()) {
             SKSEMenuFramework::SetSection("Hidden Loot");
             SKSEMenuFramework::AddSectionItem("Settings", RenderMenu);
