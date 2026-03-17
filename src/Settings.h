@@ -29,12 +29,7 @@ namespace Settings
 
     // value & keyword filter 
     inline float fValueThresholdForLoot = 1000.0f;
-    inline std::vector<std::string> uniqueKeywordEditorIDs = {
-    "VendorNoSale",
-    "MagicDisallowEnchanting",
-    "DaedricArtifact",
-    "MQ201ThalmorDisguise"
-    };
+    inline std::vector<RE::BGSKeyword*> uniqueKeywords;
 
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
@@ -71,7 +66,19 @@ namespace Settings
                     bool isTrue = (value == "true" || value == "1");
 
                     if (key == "bEnableMod") bEnableMod = isTrue;
-                    else if (key == "fValueThresholdForLoot") fValueThresholdForLoot = std::stof(value);
+                    else if (key == "fValueThresholdForLoot") {
+                        try {
+                            fValueThresholdForLoot = std::stof(value);
+                        }
+                        catch (const std::invalid_argument& e) {
+                            fValueThresholdForLoot = 1000.0f;
+                            logs::warn("Invalid argument for fValueThresholdForLoot in INI: {}. Using default value (1000.0).", e.what());
+                        }
+                        catch (const std::out_of_range& e) {
+                            fValueThresholdForLoot = 1000.0f;
+                            logs::warn("Value for fValueThresholdForLoot in INI is out of range: {}. Using default value (1000.0).", e.what());
+                        }
+                    }
                     else if (key == "bUnlootableArmor") bUnlootableArmor = isTrue;
                     else if (key == "bArmorWornOnly") bArmorWornOnly = isTrue;
                     else if (key == "bUnlootableArmorHead") bUnlootableArmorHead = isTrue;
@@ -130,6 +137,19 @@ namespace Settings
             }
             else {
                 logs::error("Error during generating INI file!");
+            }
+        }
+
+        // Cache unique keywords: VendorNoSale, MagicDisallowEnchanting, DaedricArtifact, MQ201ThalmorDisguise
+        auto dataHandler = RE::TESDataHandler::GetSingleton();
+        if (dataHandler) {
+            uniqueKeywords.clear();
+            std::vector<RE::FormID> ids = { 0xA8668, 0x10F5E2, 0xFF9FB, 0xC27BD };
+            for (RE::FormID id : ids) {
+                auto kw = dataHandler->LookupForm<RE::BGSKeyword>(id, "Skyrim.esm");
+                if (kw) {
+                    uniqueKeywords.push_back(kw);
+                }
             }
         }
     }
