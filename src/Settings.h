@@ -31,6 +31,11 @@ namespace Settings
     inline float fValueThresholdForLoot = 1000.0f;
     inline std::vector<RE::BGSKeyword*> uniqueKeywords;
 
+    // excluded NPC inventories
+    inline std::vector<RE::FormID> excludedNPCBaseIDs = {
+        0x0009B0AD // Gunjar (Tutorial - Unbound)
+    };
+
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
         if (std::string::npos == first) return "";

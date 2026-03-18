@@ -132,6 +132,14 @@ namespace LootHook
         auto actor = GetTargetActor();
         if (!actor) return true;
 
+        auto baseObj = actor->GetBaseObject();
+        if (baseObj) {
+            auto formID = baseObj->GetFormID();
+            if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), formID) != Settings::excludedNPCBaseIDs.end()) {
+                return true;
+            }
+        }
+
         bool isPickpocketing = false;
         if (ui && ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME)) {
             if (!actor->IsDead()) {
