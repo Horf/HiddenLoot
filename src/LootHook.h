@@ -8,8 +8,10 @@ namespace LootHook
     inline REL::Relocation<GetPlayable_t> original_ARMO_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
 
-    RE::Actor* GetTargetActor()
+    RE::Actor* GetTargetActor(RE::TESBoundObject* a_item)
     {
+        static RE::ObjectRefHandle s_lastActor;
+
         auto crosshair = RE::CrosshairPickData::GetSingleton();
         if (!crosshair) return nullptr;
 
@@ -30,7 +32,37 @@ namespace LootHook
         }
 
         if (refPtr) {
-            return refPtr->As<RE::Actor>();
+            auto actor = refPtr->As<RE::Actor>();
+            if (actor) {
+                s_lastActor = actor->CreateRefHandle();
+                return actor;
+            }
+            else {
+                bool belongsToContainer = false;
+                auto changes = refPtr->GetInventoryChanges();
+                if (changes && changes->entryList) {
+                    for (auto* entry : *changes->entryList) {
+                        if (entry && entry->object && entry->object->GetFormID() == a_item->GetFormID()) {
+                            belongsToContainer = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (belongsToContainer) {
+                    return nullptr;
+                }
+                else if (s_lastActor) {
+                    auto last = s_lastActor.get();
+                    if (last) return last->As<RE::Actor>();
+                }
+            }
+        }
+        else {
+            if (s_lastActor) {
+                auto last = s_lastActor.get();
+                if (last) return last->As<RE::Actor>();
+            }
         }
 
         return nullptr;
@@ -129,7 +161,7 @@ namespace LootHook
             }
         }
 
-        auto actor = GetTargetActor();
+        auto actor = GetTargetActor(a_this);
         if (!actor) return true;
 
         auto baseObj = actor->GetBaseObject();
