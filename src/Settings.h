@@ -23,6 +23,10 @@ namespace Settings
     inline bool bUnlootableClothing = false;
     inline bool bClothingWornOnly = true;
 
+    // Jewelry
+    inline bool bUnlootableJewelry = false;
+    inline bool bJewelryWornOnly = true;
+
     // Weapons
     inline bool bUnlootableWeapons = false;
     inline bool bWeaponsWornOnly = true;
@@ -44,6 +48,20 @@ namespace Settings
         if (std::string::npos == first) return "";
         size_t last = str.find_last_not_of(" \t\r\n");
         return str.substr(first, (last - first + 1));
+    }
+
+	// Helper function to safely parse floats from INI values, with support for both dot and comma as decimal separators
+    inline float ParseFloatSafe(const std::string& val, float fallback) {
+        std::string cleanVal = val;
+        std::replace(cleanVal.begin(), cleanVal.end(), ',', '.');
+        std::istringstream stream(cleanVal);
+        stream.imbue(std::locale::classic());
+        float result = fallback;
+        stream >> result;
+        if (stream.fail()) {
+            return fallback;
+        }
+        return result;
     }
 
     inline void Save();
@@ -81,33 +99,13 @@ namespace Settings
                     bool keyMatched = true;
 
                     if (key == "bEnableMod") bEnableMod = isTrue;
-                    else if (key == "balwaysshowenchanted") bAlwaysShowEnchanted = isTrue;
+                    else if (key == "bAlwaysShowEnchanted") bAlwaysShowEnchanted = isTrue;
                     else if (key == "fValueThresholdForLoot") {
                         // Safely parse float to prevent CTD on invalid user input
-                        try {
-                            fValueThresholdForLoot = std::stof(value);
-                        }
-                        catch (const std::invalid_argument& e) {
-                            fValueThresholdForLoot = 1000.0f;
-                            logs::warn("Invalid argument for fValueThresholdForLoot in INI: {}. Using default value (1000.0).", e.what());
-                        }
-                        catch (const std::out_of_range& e) {
-                            fValueThresholdForLoot = 1000.0f;
-                            logs::warn("Value for fValueThresholdForLoot in INI is out of range: {}. Using default value (1000.0).", e.what());
-                        }
+                        fValueThresholdForLoot = ParseFloatSafe(value, 1000.0f);
                     }
-                    else if (key == "fhidechance") {
-                        try {
-                            fHideChance = std::clamp(std::stof(value), 0.0f, 100.0f);
-                        }
-                        catch (const std::invalid_argument& e) {
-                            fHideChance = 100.0f;
-                            logs::warn("Invalid argument for fhidechance in INI: {}. Using default value (100.0).", e.what());
-                        }
-                        catch (const std::out_of_range& e) {
-                            fHideChance = 100.0f;
-                            logs::warn("Value for fhidechance in INI is out of range: {}. Using default value (100.0).", e.what());
-                        }
+                    else if (key == "fHideChance") {
+                        fHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
                     }
                     else if (key == "bUnlootableArmor") bUnlootableArmor = isTrue;
                     else if (key == "bArmorWornOnly") bArmorWornOnly = isTrue;
@@ -118,6 +116,8 @@ namespace Settings
                     else if (key == "bUnlootableArmorShield") bUnlootableArmorShield = isTrue;
                     else if (key == "bUnlootableClothing") bUnlootableClothing = isTrue;
                     else if (key == "bClothingWornOnly") bClothingWornOnly = isTrue;
+                    else if (key == "bUnlootableJewelry") bUnlootableJewelry = isTrue;
+                    else if (key == "bJewelryWornOnly") bJewelryWornOnly = isTrue;
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
 					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
@@ -127,7 +127,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 17) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 18) Save();
     }
 
     inline void LoadGameData() {
@@ -185,6 +185,11 @@ namespace Settings
             file << "[Clothing]\n";
             file << "bUnlootableClothing=" << (bUnlootableClothing ? "true" : "false") << "\n";
             file << "bClothingWornOnly=" << (bClothingWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Jewelry]\n";
+            file << "bUnlootableJewelry=" << (bUnlootableJewelry ? "true" : "false") << "\n";
+            file << "bJewelryWornOnly=" << (bJewelryWornOnly ? "true" : "false") << "\n\n\n";
 
 
             file << "[Weapons]\n";

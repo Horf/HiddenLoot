@@ -10,7 +10,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
     logs::info("Hooks installed and INI loaded. Waiting for Data Loaded event...");
     auto messaging = SKSE::GetMessagingInterface();
     messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
-        // Wait until all data forms (esp/esm) are loaded before caching forms or installing hooks
+        // Wait until all data forms (esp/esm) are loaded before caching forms
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Settings::LoadGameData();
 			MenuIntegration::Install();

@@ -30,16 +30,12 @@ namespace MenuIntegration
         if (ImGuiMCPComponents::ToggleButton("Always Show Enchanted", &Settings::bAlwaysShowEnchanted)) changed = true;
         HelpMarker("If enabled, magically enchanted items are never hidden.");
 
-        float chance = Settings::fHideChance;
-        if (ImGuiMCP::SliderFloat("Hide Chance (%)", &chance, 0.0f, 100.0f, "%.1f%%")) {
-            Settings::fHideChance = chance;
+        if (ImGuiMCP::SliderFloat("Hide Chance (%)", &Settings::fHideChance, 0.0f, 100.0f, "%.1f")) {
             changed = true;
         }
         HelpMarker("Percentage chance that an item will be hidden. Lower values leave more random loot on bodies. 100% hides everything matching your rules.");
 
-        float threshold = Settings::fValueThresholdForLoot;
-        if (ImGuiMCP::DragFloat("Value Threshold", &threshold, 10.0f, 0.0f, 100000.0f, "%.0f", 0)) {
-            Settings::fValueThresholdForLoot = threshold;
+        if (ImGuiMCP::DragFloat("Value Threshold", &Settings::fValueThresholdForLoot, 10.0f, 0.0f, 100000.0f, "%.0f", 0)) {
             changed = true;
         }
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
@@ -71,6 +67,12 @@ namespace MenuIntegration
         if (ImGuiMCPComponents::ToggleButton("Hide Clothing", &Settings::bUnlootableClothing)) changed = true;
         if (ImGuiMCPComponents::ToggleButton("Only Hide Worn Clothing", &Settings::bClothingWornOnly)) changed = true;
         HelpMarker("If enabled, only hides the clothing types the NPC is currently wearing.");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Jewelry");
+        if (ImGuiMCPComponents::ToggleButton("Hide Jewelry", &Settings::bUnlootableJewelry)) changed = true;
+        if (ImGuiMCPComponents::ToggleButton("Only Hide Worn Jewelry", &Settings::bJewelryWornOnly)) changed = true;
+        HelpMarker("If enabled, only hides the jewelry types the NPC is currently wearing.");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Weapons");

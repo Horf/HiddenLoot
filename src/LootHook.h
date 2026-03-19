@@ -103,7 +103,7 @@ namespace LootHook
         if (isBaseEnchanted) return true;
 
         bool isWeapon = a_this->IsWeapon();
-        bool isArmor = false, isClothing = false;
+        bool isArmor = false, isClothing = false, isJewelry = false;
         bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
 
         // Categorize armor types and body slots
@@ -113,35 +113,41 @@ namespace LootHook
                 return armor->GetSlotMask().any(a_slot);
             };
 
-            isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
-
-            isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
-                      CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
-                      CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary) ||
-                      CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModBack);
-
-            isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
-
-            isLegs = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kFeet) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
-                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
-
-            isShield = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kShield);
-
-            if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kClothing) {
-                isClothing = true;
+            if (CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kAmulet) ||
+                CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kRing)) {
+                isJewelry = true;
             }
             else {
-                isArmor = true;
+                isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
+
+                isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
+                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
+                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary) ||
+                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModBack);
+
+                isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
+
+                isLegs = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kFeet) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
+                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
+
+                isShield = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kShield);
+
+                if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kClothing) {
+                    isClothing = true;
+                }
+                else {
+                    isArmor = true;
+                }
             }
         }
 
@@ -156,6 +162,10 @@ namespace LootHook
         else if (isClothing) {
             shouldHide = Settings::bUnlootableClothing;
             requireWorn = Settings::bClothingWornOnly;
+        }
+        else if (isJewelry) {
+            shouldHide = Settings::bUnlootableJewelry;
+            requireWorn = Settings::bJewelryWornOnly;
         }
         else if (isArmor) {
             if (isShield) {
