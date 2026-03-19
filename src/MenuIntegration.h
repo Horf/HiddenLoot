@@ -27,6 +27,16 @@ namespace MenuIntegration
 
         if (ImGuiMCPComponents::ToggleButton("Enable Mod", &Settings::bEnableMod)) changed = true;
 
+        if (ImGuiMCPComponents::ToggleButton("Always Show Enchanted", &Settings::bAlwaysShowEnchanted)) changed = true;
+        HelpMarker("If enabled, magically enchanted items are never hidden.");
+
+        float chance = Settings::fHideChance;
+        if (ImGuiMCP::SliderFloat("Hide Chance (%)", &chance, 0.0f, 100.0f, "%.1f%%")) {
+            Settings::fHideChance = chance;
+            changed = true;
+        }
+        HelpMarker("Percentage chance that an item will be hidden. Lower values leave more random loot on bodies. 100% hides everything matching your rules.");
+
         float threshold = Settings::fValueThresholdForLoot;
         if (ImGuiMCP::DragFloat("Value Threshold", &threshold, 10.0f, 0.0f, 100000.0f, "%.0f", 0)) {
             Settings::fValueThresholdForLoot = threshold;

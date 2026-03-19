@@ -4,6 +4,9 @@ namespace Settings
 {
     // General
     inline bool bEnableMod = true;
+    inline bool bAlwaysShowEnchanted = false;
+    inline float fHideChance = 100.0f;
+    inline float fValueThresholdForLoot = 1000.0f;
 
     // Armor & Shields
     inline bool bUnlootableArmor = true;
@@ -27,8 +30,7 @@ namespace Settings
     // Pickpocket
     inline bool bIncludePickpocket = false;
 
-    // Value & Keyword Filters 
-    inline float fValueThresholdForLoot = 1000.0f;
+    // Keyword Filters 
     inline std::vector<RE::BGSKeyword*> uniqueKeywords;
 
     // Excluded NPC inventories (Base FormIDs)
@@ -44,9 +46,12 @@ namespace Settings
         return str.substr(first, (last - first + 1));
     }
 
-    inline void Load()
+    inline void Save();
+
+    inline void LoadINI()
     {
         std::filesystem::path iniPath = "Data/SKSE/Plugins/HiddenLoot.ini";
+        int keysFound = 0;
 
         if (std::filesystem::exists(iniPath)) {
             std::ifstream file(iniPath);
@@ -73,8 +78,10 @@ namespace Settings
                     std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
                     bool isTrue = (value == "true" || value == "1");
+                    bool keyMatched = true;
 
                     if (key == "bEnableMod") bEnableMod = isTrue;
+                    else if (key == "balwaysshowenchanted") bAlwaysShowEnchanted = isTrue;
                     else if (key == "fValueThresholdForLoot") {
                         // Safely parse float to prevent CTD on invalid user input
                         try {
@@ -89,6 +96,19 @@ namespace Settings
                             logs::warn("Value for fValueThresholdForLoot in INI is out of range: {}. Using default value (1000.0).", e.what());
                         }
                     }
+                    else if (key == "fhidechance") {
+                        try {
+                            fHideChance = std::clamp(std::stof(value), 0.0f, 100.0f);
+                        }
+                        catch (const std::invalid_argument& e) {
+                            fHideChance = 100.0f;
+                            logs::warn("Invalid argument for fhidechance in INI: {}. Using default value (100.0).", e.what());
+                        }
+                        catch (const std::out_of_range& e) {
+                            fHideChance = 100.0f;
+                            logs::warn("Value for fhidechance in INI is out of range: {}. Using default value (100.0).", e.what());
+                        }
+                    }
                     else if (key == "bUnlootableArmor") bUnlootableArmor = isTrue;
                     else if (key == "bArmorWornOnly") bArmorWornOnly = isTrue;
                     else if (key == "bUnlootableArmorHead") bUnlootableArmorHead = isTrue;
@@ -101,56 +121,16 @@ namespace Settings
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
 					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
+                    else keyMatched = false;
+                    if (keyMatched) keysFound++;
                 }
             }
+			file.close();
         }
-        else {
-            // Generate default INI if it doesn't exist
-            std::ofstream file(iniPath);
-            if (file.is_open()) {
-                file << "[General]\n";
-                file << "bEnableMod=true\n\n";
+        if (!std::filesystem::exists(iniPath) || keysFound < 17) Save();
+    }
 
-                file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
-                file << "fValueThresholdForLoot=1000.0\n\n\n";
-
-
-                file << "[Armor]\n";
-                file << "bUnlootableArmor=true\n\n";
-
-                file << "; Specific body slots only (Takes effect if bUnlootableArmor=false)\n";
-                file << "bUnlootableArmorHead=false\t; Includes Head, Hair and Circlets\n";
-                file << "bUnlootableArmorChest=false\t; Includes Body, Chest and Back\n";
-                file << "bUnlootableArmorArms=false\t; Includes Hands, Arms, Forearms and Shoulder\n";
-                file << "bUnlootableArmorLegs=false\t; Includes Feet, Leg, Calves and Pelvis\n\n";
-
-                file << "; Hides shields\n";
-                file << "bUnlootableArmorShield=true\n\n";
-
-                file << "; If true, only hides the armor/shield types the NPC is currently wearing.\n";
-                file << "; Same goes for every other WornOnly option.\n";
-                file << "bArmorWornOnly=true\n\n\n";
-
-
-                file << "[Clothing]\n";
-                file << "bUnlootableClothing=false\n";
-                file << "bClothingWornOnly=true\n\n\n";
-
-
-                file << "[Weapons]\n";
-                file << "bUnlootableWeapons=false\n";
-                file << "bWeaponsWornOnly=true\n\n\n";
-
-
-                file << "[Pickpocket]\n";
-                file << "; If true, settings apply also while pickpocketing NPCs.\n";
-                file << "bIncludePickpocket=false\n";
-            }
-            else {
-                logs::error("Error during generating INI file!");
-            }
-        }
-
+    inline void LoadGameData() {
         // Cache unique keywords using FormIDs in Vanilla Skyrim.
         // Keywords: VendorNoSale, MagicDisallowEnchanting, DaedricArtifact, MQ201ThalmorDisguise
         auto dataHandler = RE::TESDataHandler::GetSingleton();
@@ -166,6 +146,7 @@ namespace Settings
             }
         }
     }
+
     inline void Save()
     {
         std::filesystem::path iniPath = "Data/SKSE/Plugins/HiddenLoot.ini";
@@ -173,6 +154,12 @@ namespace Settings
         if (file.is_open()) {
             file << "[General]\n";
             file << "bEnableMod=" << (bEnableMod ? "true" : "false") << "\n\n";
+
+            file << "; If true, magically enchanted items will always be lootable.\n";
+            file << "bAlwaysShowEnchanted=" << (bAlwaysShowEnchanted ? "true" : "false") << "\n\n";
+            
+            file << "; Chance in percent (0.0 to 100.0) that an item gets hidden.\n";
+            file << "fHideChance=" << fHideChance << "\n\n";
 
             file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
             file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n\n";

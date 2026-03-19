@@ -92,6 +92,16 @@ namespace LootHook
         if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
         if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
 
+        // Check if the base item is already enchanted and the user wants to see it
+        bool isBaseEnchanted = false;
+        if (Settings::bAlwaysShowEnchanted) {
+            auto enchantable = a_this->As<RE::TESEnchantableForm>();
+            if (enchantable && enchantable->formEnchanting) {
+                isBaseEnchanted = true;
+            }
+        }
+        if (isBaseEnchanted) return true;
+
         bool isWeapon = a_this->IsWeapon();
         bool isArmor = false, isClothing = false;
         bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
@@ -210,6 +220,7 @@ namespace LootHook
         if (isValidTarget) {
             bool isQuestObject = false;
             bool isWorn = false;
+            bool isExtraEnchanted = false;
             bool foundInNPCInventory = false;
 
             // Fetch live inventory data to accurately determine 'worn' and 'quest' status
@@ -222,13 +233,34 @@ namespace LootHook
                     if (entryData) {
                         if (entryData->IsQuestObject()) isQuestObject = true;
                         if (entryData->IsWorn()) isWorn = true;
+						// Check for individual enchanted items in the inventory if the setting is enabled
+                        if (Settings::bAlwaysShowEnchanted && entryData->IsEnchanted()) isExtraEnchanted = true;
                     }
                     break;
                 }
             }
 
             // If the item isn't in their direct inventory or is a quest item, keep it visible
-            if (!foundInNPCInventory || isQuestObject)  return true;
+            if (!foundInNPCInventory || isQuestObject || isExtraEnchanted)  return true;
+
+            // if fHideChance is set to less than 100%, apply deterministic 'random' hiding
+            if (Settings::fHideChance < 100.0f) {
+				// Same seed value for the same actor-item pair to ensure consistent hiding across inventory updates
+                uint32_t seed = actor->GetFormID() ^ a_this->GetFormID();
+
+                seed = (seed ^ 61) ^ (seed >> 16);
+                seed = seed + (seed << 3);
+                seed = seed ^ (seed >> 4);
+                seed = seed * 0x27d4eb2d;
+                seed = seed ^ (seed >> 15);
+
+                float randomVal = static_cast<float>(seed % 10000) / 100.0f;
+
+				// If the random value exceeds the hide chance, show the item
+                if (randomVal >= Settings::fHideChance) {
+                    return true;
+                }
+            }
 
             // Final decision based on 'WornOnly' setting
             if (requireWorn) {
@@ -249,10 +281,8 @@ namespace LootHook
         return ProcessItem(a_this, original_WEAP_GetPlayable(a_this));
     }
 
-    void Install()
+    void InstallHooks()
     {
-        Settings::Load();
-
         // Hook GetPlayable for Armors
         REL::Relocation<std::uintptr_t> armoVTable(RE::VTABLE_TESObjectARMO[0]);
         original_ARMO_GetPlayable = armoVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_ARMO_GetPlayable));
@@ -261,6 +291,6 @@ namespace LootHook
         REL::Relocation<std::uintptr_t> weapVTable(RE::VTABLE_TESObjectWEAP[0]);
         original_WEAP_GetPlayable = weapVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_WEAP_GetPlayable));
 
-        logs::info("Successfully installed hooks!");
+        logs::info("VTable hooks applied successfully.");
     }
 }
