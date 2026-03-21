@@ -41,7 +41,7 @@ namespace LootHook
     }
 
     // Improved target retrieval with a history buffer to sync fast crosshair movement with slow UI threads
-    RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item)
+    RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item, bool a_isLooting)
     {
         // Storing the last 5 unique references the crosshair has touched.
         static std::deque<RE::ObjectRefHandle> s_targetHistory;
@@ -77,6 +77,10 @@ namespace LootHook
                 if (s_targetHistory.size() > 5) s_targetHistory.pop_back();
             }
         }
+
+        // If no menu is open and crosshair is empty, do not use history.
+        // This prevents the mod from hiding items in the player's own inventory tab.
+        if (!refPtr && !a_isLooting) return nullptr;
 
         // Which of the recent targets actually owns the item the UI is asking for?
         // Iterating from newest to oldest to find the most likely match.
@@ -199,20 +203,19 @@ namespace LootHook
 
         // UI Context check
         auto ui = RE::UI::GetSingleton();
-        bool isLootMenuOpen = ui && ui->IsMenuOpen("LootMenu");
-        bool isContainerOpen = ui && ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME);
+        if (!ui) return true;
 
+        bool isLootMenuOpen = ui->IsMenuOpen("LootMenu");
+        bool isContainerOpen = ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME);
+        
         // Always show in regular menus (Player Inventory, Trading, Barter, Crafting)
-        if (ui && !isLootMenuOpen && !isContainerOpen) {
-            if (ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) || ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) || ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
-                ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) || ui->IsMenuOpen(RE::GiftMenu::MENU_NAME))
-            {
-                return true;
-            }
-        }
+        bool isAnyOtherMenuOpen = ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) || ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
+                                  ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) || ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
+                                  ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) || ui->IsMenuOpen(RE::GiftMenu::MENU_NAME);
 
-        auto targetRef = GetTargetRef(a_this);
+        if (isAnyOtherMenuOpen && !isContainerOpen) return true;
+
+        auto targetRef = GetTargetRef(a_this, (isLootMenuOpen || isContainerOpen));
         bool inPlayer = ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this);
 
         // If in QuickLoot (LootMenu):
