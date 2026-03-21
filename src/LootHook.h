@@ -13,7 +13,7 @@ namespace LootHook
     {
         if (!a_ref || !a_item) return false;
 
-        // Check dynamic inventory changes (worn, added, or moved items)
+        // Check dynamic inventory changes (worn, added via scripts, or moved items)
         auto changes = a_ref->GetInventoryChanges();
         if (changes && changes->entryList) {
             for (auto* entry : *changes->entryList) {
@@ -23,7 +23,7 @@ namespace LootHook
             }
         }
 
-        // Check base container (untouched default loot)
+        // Check base container data (default loot defined in ESP/ESM that hasn't been instantiated yet)
         auto base = a_ref->GetBaseObject();
         auto container = base ? base->As<RE::TESContainer>() : nullptr;
         if (container) {
@@ -41,9 +41,10 @@ namespace LootHook
     }
 
     // Improved target retrieval with a history buffer to sync fast crosshair movement with slow UI threads
-    RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item, bool a_isLooting)
+    RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item, bool a_isLootMenuOpen, bool a_isContainerOpen)
     {
-        // Storing the last 5 unique references the crosshair has touched.
+        // Store the last 5 unique references to bridge the gap between the real-time crosshair 
+        // and asynchronous UI updates (like QuickLoot IE).
         static std::deque<RE::ObjectRefHandle> s_targetHistory;
 
         auto crosshair = RE::CrosshairPickData::GetSingleton();
@@ -51,7 +52,7 @@ namespace LootHook
 
         RE::NiPointer<RE::TESObjectREFR> refPtr;
 
-        // Skyrim VR specific crosshair/hand targeting
+        // Handle Skyrim VR specific crosshair/hand targeting
         if (REL::Module::IsVR()) {
             const auto player = RE::PlayerCharacter::GetSingleton();
             if (player) {
@@ -68,7 +69,7 @@ namespace LootHook
             if (crosshair->target[0]) refPtr = crosshair->target[0].get();
         }
 
-        // If a new target is under the crosshair, push it to our history.
+        // Update history: Push new target to front and keep only the most recent entries.
         if (refPtr) {
             auto currentHandle = refPtr->CreateRefHandle();
             // Only add if it's not already the newest entry
@@ -78,17 +79,19 @@ namespace LootHook
             }
         }
 
-        // If no menu is open and crosshair is empty, do not use history.
-        // This prevents the mod from hiding items in the player's own inventory tab.
-        if (!refPtr && !a_isLooting) return nullptr;
+        // Security check: Only use history if a looting UI is actually active.
+        // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory.
+        if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
+
+        // Search depth: QuickLoot needs the full history due to async lag. 
+        // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses.
+        size_t maxDepth = a_isLootMenuOpen ? s_targetHistory.size() : (s_targetHistory.empty() ? 0 : 1);
 
         // Which of the recent targets actually owns the item the UI is asking for?
         // Iterating from newest to oldest to find the most likely match.
-        for (auto& handle : s_targetHistory) {
-            auto ref = handle.get().get();
-            if (ref && ContainerHasItem(ref, a_item)) {
-                return ref;
-            }
+        for (size_t i = 0; i < maxDepth; ++i) {
+            auto ref = s_targetHistory[i].get().get();
+            if (ContainerHasItem(ref, a_item)) return ref;
         }
 
         // Item found nowhere (it was just looted or crosshair moved to empty space).
@@ -102,11 +105,11 @@ namespace LootHook
         if (!Settings::bEnableMod) return originalResult;
         if (!originalResult) return false;
 
-        // Exclude valuable items and 'unique' artifacts from being hidden
+        // Static whitelists: Items above value threshold or with specific keywords are always lootable.
         if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
         if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
 
-        // Check if the base item is already enchanted and the user wants to see it
+        // Option: Whitelist all naturally enchanted items.
         if (Settings::bAlwaysShowEnchanted) {
             auto enchantable = a_this->As<RE::TESEnchantableForm>();
             if (enchantable && enchantable->formEnchanting) return true;
@@ -124,11 +127,13 @@ namespace LootHook
                 return armor->GetSlotMask().any(a_slot);
             };
 
+            // Differentiate between generic clothing/armor and Jewelry (Rings/Amulets).
             if (CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kAmulet) ||
                 CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kRing)) {
                 isJewelry = true;
             }
             else {
+                // Categorize by body slots for granular control.
                 isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
@@ -165,7 +170,7 @@ namespace LootHook
         bool shouldHide = false;
         bool requireWorn = true;
 
-        // Apply user settings based on item category
+        // Match item type to user settings.
         if (isWeapon) {
             shouldHide = Settings::bUnlootableWeapons;
             requireWorn = Settings::bWeaponsWornOnly;
@@ -203,36 +208,26 @@ namespace LootHook
 
         // UI Context check
         auto ui = RE::UI::GetSingleton();
-        if (!ui) return true;
+		if (!ui) return true;
 
         bool isLootMenuOpen = ui->IsMenuOpen("LootMenu");
         bool isContainerOpen = ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME);
         
-        // Always show in regular menus (Player Inventory, Trading, Barter, Crafting)
+        // Whitelist non-looting menus (Player Inventory, Barter, Crafting) to keep player items visible.
         bool isAnyOtherMenuOpen = ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) || ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
                                   ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) || ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
                                   ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) || ui->IsMenuOpen(RE::GiftMenu::MENU_NAME);
 
         if (isAnyOtherMenuOpen && !isContainerOpen) return true;
 
-        auto targetRef = GetTargetRef(a_this, (isLootMenuOpen || isContainerOpen));
-        bool inPlayer = ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this);
+        // Ownership validation: Find out which recent target owns the item.
+        auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
 
-        // If in QuickLoot (LootMenu):
-        if (isLootMenuOpen) {
-            // QuickLoot ONLY shows the NPC side. If no NPC owner is found -> Hide (Ghost).
-            if (!targetRef) return false;
-        }
-        // If full Container Interface:
-        else if (isContainerOpen) {
-            // If the player owns the item, always show it
-            if (inPlayer) return true;
-            // If player doesn't have it and no NPC owner found -> Hide (Ghost).
-            if (!targetRef) return false;
-        }
-        // Fallback for safety (e.g. looking at a corpse without menu open)
-        else {
-            if (!targetRef) return true;
+        // Phantom-Item protection: If the item exists in the UI but no owner is found in history,
+        // it's likely a lagging UI artifact or was just looted. Hide it to prevent flickering.
+        if (!targetRef) {
+            if (isLootMenuOpen) return false;
+            return true;
         }
 
         // From here on, 'targetRef' is guaranteed to be a valid owner from history.
@@ -240,7 +235,7 @@ namespace LootHook
         bool isFECAshGhostContainer = false;
 
         if (actor) {
-            // Whitelist check for specific NPCs to prevent progression blockers
+            // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers.
             auto baseObj = actor->GetBaseObject();
             if (baseObj) {
                 auto formID = baseObj->GetFormID();
@@ -254,7 +249,7 @@ namespace LootHook
             auto baseObj = targetRef->GetBaseObject();
             if (baseObj) {
                 auto formType = baseObj->GetFormType();
-                // Ash Piles are Activators. FEC uses containers or activators.
+                // Specialized handling for non-actor corpse containers (Ash Piles, FEC-frozen corpses, etc.)
                 if (formType == RE::FormType::Activator || formType == RE::FormType::Container) {
                     if (targetRef->extraList.HasType(RE::ExtraDataType::kAshPileRef) ||
                         targetRef->extraList.HasType(RE::ExtraDataType::kTextDisplayData)) {
@@ -265,20 +260,19 @@ namespace LootHook
         }
 
         bool isPickpocketing = actor && !actor->IsDead() && isContainerOpen;
-
-        // Valid targets: Dead Actors, Pickpocketing (if enabled), or FEC/Ash Piles
         bool isValidTarget = (actor && actor->IsDead()) || isFECAshGhostContainer || (Settings::bIncludePickpocket && isPickpocketing);
 
-        // If it's a valid looting scenario, scan the inventory
         if (isValidTarget) {
             bool isQuestObject = false;
             bool isWorn = false;
             bool isExtraEnchanted = false;
+            bool foundInNPCInventory = false;
 
-            // USE targetRef->GetInventory() - This works for Actors and FEC Containers/Ashpiles
+            // Fetch live inventory data from the confirmed owner.
             auto invMap = targetRef->GetInventory();
             for (auto& [item, data] : invMap) {
                 if (item && item->GetFormID() == a_this->GetFormID()) {
+                    foundInNPCInventory = true;
                     auto* entryData = data.second.get();
                     if (entryData) {
                         if (entryData->IsQuestObject()) isQuestObject = true;
@@ -290,12 +284,17 @@ namespace LootHook
                 }
             }
 
-            // If the item is a quest item or showEnchanted enabled, keep it visible
+            // Fallback for UI-Lag: If an item is still rendered by QuickLoot but missing from inventory, hide it.
+            if (!foundInNPCInventory) {
+                if (isLootMenuOpen) return false;
+                return true;
+            }
+
+            // Safety: Never hide Quest Items or specifically whitelisted enchanted gear.
             if (isQuestObject || isExtraEnchanted)  return true;
 
-            // if fHideChance is set to less than 100%, apply deterministic 'random' hiding
+            // Apply deterministic 'random' hiding based on the actor-item seed.
             if (Settings::fHideChance < 100.0f) {
-				// Same seed value for the same actor-item pair to ensure consistent hiding across inventory updates
                 uint32_t seed = targetRef->GetFormID() ^ a_this->GetFormID();
 
                 seed = (seed ^ 61) ^ (seed >> 16);
@@ -305,8 +304,6 @@ namespace LootHook
                 seed = seed ^ (seed >> 15);
 
                 float randomVal = static_cast<float>(seed % 10000) / 100.0f;
-
-				// If the random value exceeds the hide chance, show the item
                 if (randomVal >= Settings::fHideChance) return true;
             }
 
@@ -316,8 +313,7 @@ namespace LootHook
                 if (isWorn) return false;
             }
             else if (isFECAshGhostContainer) {
-                // FEC / Ash Piles lose the 'isWorn' data entirely. 
-                // To maintain the mod's core functionality the items get forcefully hidden.
+                // Specialized containers lose the 'isWorn' flag, so hide them forcefully if hiding is enabled.
                 return false;
             }
             // Hide regardless of worn status

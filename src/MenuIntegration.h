@@ -31,12 +31,12 @@ namespace MenuIntegration
         HelpMarker("If enabled, magically enchanted items are never hidden.");
 
         if (ImGuiMCP::SliderFloat("Hide Chance (%)", &Settings::fHideChance, 0.0f, 100.0f, "%.1f")) {
-            changed = true;
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         }
         HelpMarker("Percentage chance that an item will be hidden. Lower values leave more random loot on bodies. 100% hides everything matching your rules.");
 
         if (ImGuiMCP::DragFloat("Value Threshold", &Settings::fValueThresholdForLoot, 10.0f, 0.0f, 100000.0f, "%.0f", 0)) {
-            changed = true;
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         }
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
 
