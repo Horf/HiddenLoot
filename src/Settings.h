@@ -34,8 +34,16 @@ namespace Settings
     // Pickpocket
     inline bool bIncludePickpocket = false;
 
-    // Keyword Filters 
+    // Keyword Filters (fixed)
     inline std::vector<RE::BGSKeyword*> uniqueKeywords;
+    // User defined
+    inline std::string sHideKeywords = "";
+    inline std::vector<std::string> hideKeywordsList;
+
+    // Corpse Filters
+    inline bool bApplyToPlayerKills = true;
+    inline bool bApplyToNPCKills = true;
+    inline bool bApplyToPreDead = true;
 
     // Excluded NPC inventories (Base FormIDs)
     inline std::vector<RE::FormID> excludedNPCBaseIDs = {
@@ -93,7 +101,8 @@ namespace Settings
                         value = value.substr(0, commentPos);
                     }
                     value = Trim(value);
-                    std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    std::string originalValue = value;
+                    if (key != "sHideKeywords") std::ranges::transform(value, value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
                     bool isTrue = (value == "true" || value == "1");
                     bool keyMatched = true;
@@ -121,13 +130,17 @@ namespace Settings
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
 					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
+                    else if (key == "bApplyToPlayerKills") bApplyToPlayerKills = isTrue;
+                    else if (key == "bApplyToNPCKills") bApplyToNPCKills = isTrue;
+                    else if (key == "bApplyToPreDead") bApplyToPreDead = isTrue;
+                    else if (key == "sHideKeywords") sHideKeywords = originalValue;
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
                 }
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 18) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 22) Save();
     }
 
     inline void LoadGameData() {
@@ -143,6 +156,19 @@ namespace Settings
                 if (kw) {
                     uniqueKeywords.push_back(kw);
                 }
+            }
+        }
+        hideKeywordsList.clear();
+        if (!sHideKeywords.empty()) {
+            std::stringstream ss(sHideKeywords);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                token = Trim(token);
+                if (!token.empty()) {
+                    // Lookup the keyword by EditorID across all loaded plugins,
+					// using strings so dynamic keywords can be used as well
+                    if (!token.empty()) hideKeywordsList.push_back(token);
+                }     
             }
         }
     }
@@ -163,6 +189,12 @@ namespace Settings
 
             file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
             file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n\n";
+
+
+            file << "[Keywords]\n";
+            file << "; Comma-separated list of EditorIDs for keywords that should ALWAYS hide an item.\n";
+            file << "; Example: sHideKeywords=IsJunk, FollowerArrowKeyword\n";
+            file << "sHideKeywords=" << sHideKeywords << "\n\n\n";
 
 
             file << "[Armor]\n";
@@ -199,7 +231,14 @@ namespace Settings
 
             file << "[Pickpocket]\n";
             file << "; If true, settings apply also while pickpocketing NPCs.\n";
-            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n";
+            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n\n\n";
+            
+
+            file << "[CorpseFilters]\n";
+            file << "; Choose which corpses the hiding rules apply to.\n";
+            file << "bApplyToPlayerKills=" << (bApplyToPlayerKills ? "true" : "false") << "\t; Killed by Player, Followers or Summons\n";
+            file << "bApplyToNPCKills=" << (bApplyToNPCKills ? "true" : "false") << "\t\t; Killed by other NPCs, Creatures, etc\n";
+            file << "bApplyToPreDead=" << (bApplyToPreDead ? "true" : "false") << "\t\t; Corpses that were already dead when you found them\n";
         }
     }
 }
