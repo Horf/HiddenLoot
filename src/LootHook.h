@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Settings.h"
+#include "DeathTracker.h"
 
 namespace LootHook
 {
@@ -13,6 +14,14 @@ namespace LootHook
     {
         if (!a_ref || !a_item) return false;
 
+        auto base = a_ref->GetBaseObject();
+        if (!base) return false;
+
+        // Skip the item scan for activators/special container (e.g. Ash Piles)
+        // These don't hold traditional inventories in the same way actors do
+        if (base->Is(RE::FormType::Activator)) return true;
+        if (base->Is(RE::FormType::Container) && (a_ref->GetFormID() >> 24) == 0xFF) return true;
+
         // Check dynamic inventory changes (worn, added via scripts, or moved items)
         auto changes = a_ref->GetInventoryChanges();
         if (changes && changes->entryList) {
@@ -24,7 +33,6 @@ namespace LootHook
         }
 
         // Check base container data (default loot defined in ESP/ESM that hasn't been instantiated yet)
-        auto base = a_ref->GetBaseObject();
         auto container = base ? base->As<RE::TESContainer>() : nullptr;
         if (container) {
             bool found = false;
@@ -105,8 +113,40 @@ namespace LootHook
         if (!Settings::bEnableMod) return originalResult;
         if (!originalResult) return false;
 
-        // Static whitelists: Items above value threshold or with specific keywords are always lootable.
-        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
+        // UI Context check
+        auto ui = RE::UI::GetSingleton();
+        if (!ui) return true;
+
+        bool isLootMenuOpen = ui->IsMenuOpen("LootMenu");
+        bool isContainerOpen = ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME);
+
+        // Whitelist non-looting menus (Player Inventory, Barter, Crafting) to keep player items visible.
+        bool isAnyOtherMenuOpen = ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) || ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) || ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) || ui->IsMenuOpen(RE::GiftMenu::MENU_NAME);
+
+        if (isAnyOtherMenuOpen && !isContainerOpen) return true;
+
+        // Ownership validation: Find out which recent target owns the item
+        auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
+
+        // Phantom-Item protection: If the item exists in the UI but no owner is found in history
+        // it's likely a lagging UI artifact or was just looted. Hide it to prevent flickering
+        if (!targetRef) {
+            if (isLootMenuOpen) return false;
+            return true;
+        }
+
+        // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
+        auto kwForm = a_this->As<RE::BGSKeywordForm>();
+        if (kwForm && !Settings::hideKeywordsList.empty()) {
+            if (a_this->HasAnyKeywordByEditorID(Settings::hideKeywordsList)) {
+                return false;
+            }
+        }
+
+        // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable
+        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true; 
         if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
 
         // Option: Whitelist all naturally enchanted items.
@@ -206,70 +246,70 @@ namespace LootHook
         // If the item type isn't configured to be hidden, allow it
         if (!shouldHide) return true;
 
-        // UI Context check
-        auto ui = RE::UI::GetSingleton();
-		if (!ui) return true;
-
-        bool isLootMenuOpen = ui->IsMenuOpen("LootMenu");
-        bool isContainerOpen = ui->IsMenuOpen(RE::ContainerMenu::MENU_NAME);
-        
-        // Whitelist non-looting menus (Player Inventory, Barter, Crafting) to keep player items visible.
-        bool isAnyOtherMenuOpen = ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) || ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
-                                  ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) || ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
-                                  ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) || ui->IsMenuOpen(RE::GiftMenu::MENU_NAME);
-
-        if (isAnyOtherMenuOpen && !isContainerOpen) return true;
-
-        // Ownership validation: Find out which recent target owns the item.
-        auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
-
-        // Phantom-Item protection: If the item exists in the UI but no owner is found in history,
-        // it's likely a lagging UI artifact or was just looted. Hide it to prevent flickering.
-        if (!targetRef) {
-            if (isLootMenuOpen) return false;
-            return true;
-        }
-
-        // From here on, 'targetRef' is guaranteed to be a valid owner from history.
+        // From here on, 'targetRef' is guaranteed to be a valid owner from history
         auto actor = targetRef->As<RE::Actor>();
-        bool isFECAshGhostContainer = false;
+
+        auto baseObj = targetRef->GetBaseObject();
+        if (!baseObj) return true;
+
+        RE::Actor* sourceActor = actor;
+        bool isAshGhostCorpseContainer = false;
 
         if (actor) {
             // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers.
-            auto baseObj = actor->GetBaseObject();
-            if (baseObj) {
-                auto formID = baseObj->GetFormID();
-                if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), formID) != Settings::excludedNPCBaseIDs.end()) {
-                    return true;
-                }
+            auto formID = baseObj->GetFormID();
+            if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), formID) != Settings::excludedNPCBaseIDs.end()) {
+                return true;
             }
         }
         else {
-            // Detect if the target are Ash Piles, Ghost Remains or a custom FEC corpse container
-            auto baseObj = targetRef->GetBaseObject();
-            if (baseObj) {
-                auto formType = baseObj->GetFormType();
-                // Specialized handling for non-actor corpse containers (Ash Piles, FEC-frozen corpses, etc.)
-                if (formType == RE::FormType::Activator || formType == RE::FormType::Container) {
-                    if (targetRef->extraList.HasType(RE::ExtraDataType::kAshPileRef) ||
-                        targetRef->extraList.HasType(RE::ExtraDataType::kTextDisplayData)) {
-                        isFECAshGhostContainer = true;
+            // Detect if the target are Ash Piles, Ghost Remains or a custom corpse container
+            auto formType = baseObj->GetFormType();
+            // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles)
+            if (formType == RE::FormType::Activator) {
+                isAshGhostCorpseContainer = true;
+                // Find the original actor that turned into this ash pile
+                if (auto processLists = RE::ProcessLists::GetSingleton()) {
+                    for (auto& handle : processLists->highActorHandles) {
+                        if (auto loadedActor = handle.get().get()) {
+                            if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
+                                if (xAsh->ashPileRef.get().get() == targetRef) {
+                                    sourceActor = loadedActor;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
+            }
+            // Specialized handling for temporary dynamic containers (formID starts with 0xFF)
+            else if (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF) {
+                isAshGhostCorpseContainer = true;
             }
         }
 
         bool isPickpocketing = actor && !actor->IsDead() && isContainerOpen;
-        bool isValidTarget = (actor && actor->IsDead()) || isFECAshGhostContainer || (Settings::bIncludePickpocket && isPickpocketing);
+        bool isValidTarget = (actor && actor->IsDead()) || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
 
         if (isValidTarget) {
+
+			// Death category check: If the source actor is dead, determine the death category and apply category-specific settings
+            if (sourceActor && sourceActor->IsDead()) {
+                auto category = DeathTracker::GetSingleton()->GetCategory(sourceActor);
+                if (category == CorpseCategory::kPrePlacedDead && !Settings::bApplyToPreDead) return true;
+                if (category == CorpseCategory::kNPCKill && !Settings::bApplyToNPCKills) return true;
+                if (category == CorpseCategory::kPlayerKill && !Settings::bApplyToPlayerKills) return true;
+            }
+
             bool isQuestObject = false;
             bool isWorn = false;
             bool isExtraEnchanted = false;
             bool foundInNPCInventory = false;
 
+            RE::TESObjectREFR* inventoryOwner = sourceActor ? sourceActor : targetRef;
+
             // Fetch live inventory data from the confirmed owner.
-            auto invMap = targetRef->GetInventory();
+            auto invMap = inventoryOwner->GetInventory();
             for (auto& [item, data] : invMap) {
                 if (item && item->GetFormID() == a_this->GetFormID()) {
                     foundInNPCInventory = true;
@@ -277,23 +317,23 @@ namespace LootHook
                     if (entryData) {
                         if (entryData->IsQuestObject()) isQuestObject = true;
                         if (entryData->IsWorn()) isWorn = true;
-						// Check for individual enchanted items in the inventory if the setting is enabled
-                        if (Settings::bAlwaysShowEnchanted && entryData->IsEnchanted()) isExtraEnchanted = true;
+                        // Check for individual enchanted items in the inventory if the setting is enabled
+                        if (entryData->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
                     }
                     break;
                 }
             }
 
-            // Fallback for UI-Lag: If an item is still rendered by QuickLoot but missing from inventory, hide it.
+            // Fallback for UI-Lag: If an item is still rendered by QuickLoot but missing from inventory, hide it
             if (!foundInNPCInventory) {
                 if (isLootMenuOpen) return false;
                 return true;
             }
 
-            // Safety: Never hide Quest Items or specifically whitelisted enchanted gear.
+            // Safety: Never hide Quest Items or specifically whitelisted enchanted gear
             if (isQuestObject || isExtraEnchanted)  return true;
 
-            // Apply deterministic 'random' hiding based on the actor-item seed.
+            // Apply deterministic 'random' hiding based on the actor-item seed
             if (Settings::fHideChance < 100.0f) {
                 uint32_t seed = targetRef->GetFormID() ^ a_this->GetFormID();
 
@@ -308,11 +348,11 @@ namespace LootHook
             }
 
             // Final decision based on 'WornOnly' setting
-            if (actor && requireWorn) {
+            if (actor && requireWorn && !isAshGhostCorpseContainer) {
                 // Hide only if worn
                 if (isWorn) return false;
             }
-            else if (isFECAshGhostContainer) {
+            else if (isAshGhostCorpseContainer) {
                 // Specialized containers lose the 'isWorn' flag, so hide them forcefully if hiding is enabled.
                 return false;
             }

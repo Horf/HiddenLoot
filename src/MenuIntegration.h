@@ -41,6 +41,17 @@ namespace MenuIntegration
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
 
         ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Keyword Filters");
+        static char keywordBuffer[256];
+        strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
+        if (ImGuiMCP::InputText("Blacklisted Keywords (EditorIDs)", keywordBuffer, sizeof(keywordBuffer))) {
+            Settings::sHideKeywords = keywordBuffer;
+            Settings::LoadGameData();
+            changed = true;
+        }
+        HelpMarker("Comma-separated list of EditorIDs (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
+
+        ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Armor & Shields");
         if (ImGuiMCPComponents::ToggleButton("Hide Armor", &Settings::bUnlootableArmor)) changed = true;
         HelpMarker("If disabled you can define bodyslot options (head, chest, arms and legs) seperately.");
@@ -85,9 +96,16 @@ namespace MenuIntegration
         if (ImGuiMCPComponents::ToggleButton("Apply to Pickpocketing", &Settings::bIncludePickpocket)) changed = true;
         HelpMarker("If enabled, settings apply also while pickpocketing NPCs.");
 
-        if (changed) {
-            Settings::Save();
-        }
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Corpse Filters");
+        if (ImGuiMCPComponents::ToggleButton("Apply to Player Kills", &Settings::bApplyToPlayerKills)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to enemies killed by you, your followers or summons.");
+        if (ImGuiMCPComponents::ToggleButton("Apply to NPC Kills", &Settings::bApplyToNPCKills)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to NPCs killed by other NPCs (e.g. World Events, Faction Wars). Disable this if you want free loot from battles you weren't involved in.");
+        if (ImGuiMCPComponents::ToggleButton("Apply to Pre-Dead Corpses", &Settings::bApplyToPreDead)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to corpses that were already dead when you found them (Decoration/Quest corpses).");
+
+        if (changed) Settings::Save();
     }
 
     inline void Install()
