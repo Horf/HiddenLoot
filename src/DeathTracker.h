@@ -73,6 +73,10 @@ namespace LootHook
                 if (it != _deadActors.end()) return it->second;
             }
 
+            if ((a_actor->GetFormID() >> 24) == 0xFF) {
+                return CorpseCategory::kPlayerKill;
+            }
+
 			// If not tracked, determine if pre-placed dead based on record flags
             return CorpseCategory::kPrePlacedDead;
         }

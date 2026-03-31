@@ -17,6 +17,7 @@ namespace LootHook
             return &singleton;
         }
         std::atomic<bool> bLootMenuOpen{ false };
+        std::atomic<long long> lastLootMenuCloseTime{ 0 };
         std::atomic<bool> bContainerMenuOpen{ false };
         std::atomic<bool> bOtherMenuOpen{ false };
 
@@ -25,6 +26,10 @@ namespace LootHook
 
             if (a_event->menuName == "LootMenu") {
                 bLootMenuOpen = a_event->opening;
+                if (!a_event->opening) {
+                    auto now = std::chrono::steady_clock::now().time_since_epoch();
+                    lastLootMenuCloseTime = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+                }
             }
             else if (a_event->menuName == RE::ContainerMenu::MENU_NAME) {
                 bContainerMenuOpen = a_event->opening;
@@ -41,61 +46,25 @@ namespace LootHook
             }
             return RE::BSEventNotifyControl::kContinue;
         }
+
+		// Due to the asynchronous nature of menu updates, this is a way to consider the loot menu "effectively open"
+        // for a brief window after it closes to prevent flickering of items
+        bool IsLootMenuEffectivelyOpen() {
+            if (bLootMenuOpen) return true;
+            auto now = std::chrono::steady_clock::now().time_since_epoch();
+            auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+            if (nowMs - lastLootMenuCloseTime < 250) return true;
+            return false;
+        }
     };
 
-	// Helper function to find the original actor that turned into an Ash Pile
-    inline RE::Actor* GetAshPileOwner(RE::TESObjectREFR* a_ashPile) {
-        if (!a_ashPile) return nullptr;
-
-        static RE::FormID lastAshPileID = 0;
-        static RE::ActorHandle lastAshPileOwnerHandle;
-        static std::mutex ashPileMutex;
-
-        std::lock_guard<std::mutex> lock(ashPileMutex);
-        if (a_ashPile->GetFormID() == lastAshPileID) {
-            return lastAshPileOwnerHandle.get().get();
-        }
-
-        lastAshPileID = a_ashPile->GetFormID();
-        lastAshPileOwnerHandle = RE::ActorHandle();
-
-        if (auto processLists = RE::ProcessLists::GetSingleton()) {
-            for (auto& handle : processLists->highActorHandles) {
-                if (auto loadedActor = handle.get().get()) {
-                    if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
-                        if (xAsh->ashPileRef.get().get() == a_ashPile) {
-                            lastAshPileOwnerHandle = handle;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        return lastAshPileOwnerHandle.get().get();
-    }
-
     // Helper to check if a specific item exists in a reference's inventory (Base or Dynamic)
-    bool ContainerHasItem(RE::TESObjectREFR* a_ref, RE::TESBoundObject* a_item)
+    bool ContainerHasItem(RE::TESObjectREFR* a_ref, RE::TESBoundObject* a_item, bool a_allowShortcut)
     {
         if (!a_ref || !a_item) return false;
 
         auto base = a_ref->GetBaseObject();
         if (!base) return false;
-
-        RE::TESObjectREFR* inventoryOwner = a_ref;
-
-        // Skip the item scan for activators/special container (e.g. Ash Piles)
-        // These don't hold traditional inventories in the same way actors do
-        if (base->Is(RE::FormType::Activator)) {
-            RE::Actor* owner = GetAshPileOwner(a_ref);
-            if (owner)
-                inventoryOwner = owner;
-            else
-                return false;
-        }
-        else if (base->Is(RE::FormType::Container) && (a_ref->GetFormID() >> 24) == 0xFF) {
-            return true;
-        }
 
         // Check dynamic inventory changes (worn, added via scripts, or moved items)
         auto changes = a_ref->GetInventoryChanges();
@@ -108,7 +77,7 @@ namespace LootHook
         }
 
         // Check base container data (default loot defined in ESP/ESM that hasn't been instantiated yet)
-        auto container = base ? base->As<RE::TESContainer>() : nullptr;
+        auto container = base->As<RE::TESContainer>();
         if (container) {
             bool found = false;
             container->ForEachContainerObject([&](RE::ContainerObject& a_obj) {
@@ -117,9 +86,18 @@ namespace LootHook
                     return RE::BSContainer::ForEachResult::kStop;
                 }
                 return RE::BSContainer::ForEachResult::kContinue;
-            });
-            return found;
+                });
+            if (found) return true;
         }
+
+        // Skip the item scan for activators/special container (e.g. Ash Piles)
+        // These don't hold traditional inventories in the same way actors do
+        if (a_allowShortcut) {
+            bool isActivator = base->Is(RE::FormType::Activator);
+            bool isDynamicContainer = base->Is(RE::FormType::Container) && ((a_ref->GetFormID() >> 24) == 0xFF);
+            if (isActivator || isDynamicContainer) return true;
+        }
+
         return false;
     }
 
@@ -127,7 +105,7 @@ namespace LootHook
     RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item, bool a_isLootMenuOpen, bool a_isContainerOpen)
     {
 		// History buffer size
-        constexpr size_t kHistorySize = 10;
+        constexpr size_t kHistorySize = 20;
 
         // Store the last unique references to bridge the gap between the real-time crosshair 
         // and asynchronous UI updates (like QuickLoot IE).
@@ -157,11 +135,7 @@ namespace LootHook
             if (crosshair->target[0]) refPtr = crosshair->target[0].get();
         }
 
-        // Security check: Only use history if a looting UI is actually active.
-        // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory.
-        if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
-
-		// Thread safety: Lock the history buffer while updating and reading
+        // Thread safety: Lock the history buffer while updating and reading
         std::lock_guard<std::mutex> lock(s_historyMutex);
 
         // Update history: Push new target to front and keep only the most recent entries.
@@ -173,22 +147,34 @@ namespace LootHook
                     s_targetHistory[i] = s_targetHistory[i - 1];
                 }
                 s_targetHistory[0] = currentHandle;
-                if (s_historySize < 5) s_historySize++;
+                if (s_historySize < kHistorySize) s_historySize++;
             }
         }
 
-        // Search depth: QuickLoot needs the full history due to async lag. 
-        // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses.
+        // Security check: Only use history if a looting UI is actually active
+        // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory
+        if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
+
+		// Search depth: QuickLoot needs the full history due to async lag
+        // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses
         size_t maxDepth = a_isLootMenuOpen ? s_historySize : (s_historySize == 0 ? 0 : 1);
 
         // Which of the recent targets actually owns the item the UI is asking for?
-        // Iterating from newest to oldest to find the most likely match.
+        // Iterating from newest to oldest to find the most likely match
         for (size_t i = 0; i < maxDepth; ++i) {
             auto ref = s_targetHistory[i].get().get();
-            if (ContainerHasItem(ref, a_item)) return ref;
+            if (!ref) continue;
+            auto base = ref->GetBaseObject();
+            bool isSpecial = base && (base->Is(RE::FormType::Activator) || (ref->GetFormID() >> 24) == 0xFF);
+            if (ContainerHasItem(ref, a_item, false)) return ref;
         }
 
-        // Item found nowhere (it was just looted or crosshair moved to empty space).
+		// Final check: If the current crosshair target has the item, it's the most likely candidate
+        if (refPtr && ContainerHasItem(refPtr.get(), a_item, true)) {
+            return refPtr.get();
+        }
+
+        // Item found nowhere (it was just looted or crosshair moved to empty space)
         return nullptr;
     }
 
@@ -201,7 +187,7 @@ namespace LootHook
 
         // UI Context check
         auto menuTracker = MenuTracker::GetSingleton();
-        bool isLootMenuOpen = menuTracker->bLootMenuOpen;
+        bool isLootMenuOpen = menuTracker->IsLootMenuEffectivelyOpen();
         bool isContainerOpen = menuTracker->bContainerMenuOpen;
         bool isAnyOtherMenuOpen = menuTracker->bOtherMenuOpen;
 
@@ -213,15 +199,15 @@ namespace LootHook
         // Phantom-Item protection: If the item exists in the UI but no owner is found in history
         // it's likely a lagging UI artifact or was just looted. Hide it to prevent flickering
         if (!targetRef) {
-            if (isLootMenuOpen) return false;
+            if (isLootMenuOpen && !isContainerOpen) return false;
             return true;
         }
 
         // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
-		if (a_this->HasKeywordInArray(Settings::cachedHideKeywords, false)) return false;
+        if (a_this->HasKeywordInArray(Settings::cachedHideKeywords, false)) return false;
 
         // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable
-        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true; 
+        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
         if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
 
         // Option: Whitelist all naturally enchanted items.
@@ -340,10 +326,40 @@ namespace LootHook
         else {
             // Detect if the target are Ash Piles, Ghost Remains or a custom corpse container
             auto formType = baseObj->GetFormType();
-            // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles)
-            if (formType == RE::FormType::Activator) {
+            bool isActivator = (formType == RE::FormType::Activator);
+            bool isDynamicContainer = (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF);
+            // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles, FEC Frozen Containers)
+            if (isActivator || isDynamicContainer) {
                 isAshGhostCorpseContainer = true;
-                sourceActor = GetAshPileOwner(targetRef);
+
+                // Caching the last detected Ash Pile to optimize performance.
+                static std::unordered_map<RE::FormID, RE::ActorHandle> s_ashPileMap;
+                static std::mutex ashPileMutex;
+
+                // Find the original actor that turned into this ash pile
+                std::lock_guard<std::mutex> lock(ashPileMutex);
+                auto it = s_ashPileMap.find(targetRef->GetFormID());
+                if (it != s_ashPileMap.end()) {
+                    // Check if the handle is valid before getting the actor
+                    if (it->second) sourceActor = it->second.get().get();
+                }
+                else {
+                    if (auto processLists = RE::ProcessLists::GetSingleton()) {
+                        for (auto& handle : processLists->highActorHandles) {
+                            if (auto loadedActor = handle.get().get()) {
+                                if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
+                                    if (xAsh->ashPileRef.get().get() == targetRef) {
+                                        s_ashPileMap[targetRef->GetFormID()] = handle;
+                                        sourceActor = loadedActor;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!sourceActor) s_ashPileMap[targetRef->GetFormID()] = RE::ActorHandle();
+                    if (s_ashPileMap.size() > 20) s_ashPileMap.clear();
+                }
             }
             // Specialized handling for temporary dynamic containers (formID starts with 0xFF)
             else if (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF) {
@@ -356,9 +372,28 @@ namespace LootHook
 
         if (isValidTarget) {
 
-			// Death category check: If the source actor is dead, determine the death category and apply category-specific settings
-            if (sourceActor && sourceActor->IsDead()) {
-                auto category = DeathTracker::GetSingleton()->GetCategory(sourceActor);
+			// Early exit if no pickpocketing and all death categories are disabled
+            if (!isPickpocketing && !Settings::bApplyToPreDead && !Settings::bApplyToNPCKills && !Settings::bApplyToPlayerKills) {
+                return true;
+            }
+
+            // Death category check: Determine the death category and apply category-specific settings
+            if (!isPickpocketing) {
+				// Fallback logic for orphans
+                CorpseCategory category = CorpseCategory::kPlayerKill;
+
+                if (sourceActor && sourceActor->IsDead()) {
+                    category = DeathTracker::GetSingleton()->GetCategory(sourceActor);
+                }
+                else if (isAshGhostCorpseContainer) {
+                    if ((targetRef->GetFormID() >> 24) == 0xFF) {
+                        category = CorpseCategory::kPlayerKill;
+                    }
+                    else {
+                        category = CorpseCategory::kPrePlacedDead;
+                    }
+                }
+
                 if (category == CorpseCategory::kPrePlacedDead && !Settings::bApplyToPreDead) return true;
                 if (category == CorpseCategory::kNPCKill && !Settings::bApplyToNPCKills) return true;
                 if (category == CorpseCategory::kPlayerKill && !Settings::bApplyToPlayerKills) return true;
@@ -388,14 +423,11 @@ namespace LootHook
             }
 
 			// If the item wasn't found in the dynamic inventory changes, it might still be in the base container data (e.g. pre-looted corpse or static NPC inventory)
-            if (!foundInNPCInventory) {
-                if (ContainerHasItem(inventoryOwner, a_this)) {
-                    foundInNPCInventory = true;
-                }
-            }
+            if (!foundInNPCInventory && ContainerHasItem(inventoryOwner, a_this, false)) foundInNPCInventory = true;
 
             // Fallback for UI-Lag: If an item is still rendered by QuickLoot but missing from inventory, hide it
             if (!foundInNPCInventory) {
+                if (isContainerOpen) return true;
                 if (isLootMenuOpen) return false;
                 return true;
             }
