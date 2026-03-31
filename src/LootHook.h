@@ -5,6 +5,10 @@
 
 namespace LootHook
 {
+    using GetPlayable_t = bool(*)(RE::TESBoundObject*);
+    inline REL::Relocation<GetPlayable_t> original_ARMO_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
+
 	// Tracks the open/close state of relevant menus to determine if an attempt to identify a target reference for the item should be queried
     class MenuTracker : public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
     public:
@@ -39,9 +43,36 @@ namespace LootHook
         }
     };
 
-    using GetPlayable_t = bool(*)(RE::TESBoundObject*);
-    inline REL::Relocation<GetPlayable_t> original_ARMO_GetPlayable;
-    inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
+	// Helper function to find the original actor that turned into an Ash Pile
+    inline RE::Actor* GetAshPileOwner(RE::TESObjectREFR* a_ashPile) {
+        if (!a_ashPile) return nullptr;
+
+        static RE::FormID lastAshPileID = 0;
+        static RE::ActorHandle lastAshPileOwnerHandle;
+        static std::mutex ashPileMutex;
+
+        std::lock_guard<std::mutex> lock(ashPileMutex);
+        if (a_ashPile->GetFormID() == lastAshPileID) {
+            return lastAshPileOwnerHandle.get().get();
+        }
+
+        lastAshPileID = a_ashPile->GetFormID();
+        lastAshPileOwnerHandle = RE::ActorHandle();
+
+        if (auto processLists = RE::ProcessLists::GetSingleton()) {
+            for (auto& handle : processLists->highActorHandles) {
+                if (auto loadedActor = handle.get().get()) {
+                    if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
+                        if (xAsh->ashPileRef.get().get() == a_ashPile) {
+                            lastAshPileOwnerHandle = handle;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return lastAshPileOwnerHandle.get().get();
+    }
 
     // Helper to check if a specific item exists in a reference's inventory (Base or Dynamic)
     bool ContainerHasItem(RE::TESObjectREFR* a_ref, RE::TESBoundObject* a_item)
@@ -51,10 +82,20 @@ namespace LootHook
         auto base = a_ref->GetBaseObject();
         if (!base) return false;
 
+        RE::TESObjectREFR* inventoryOwner = a_ref;
+
         // Skip the item scan for activators/special container (e.g. Ash Piles)
         // These don't hold traditional inventories in the same way actors do
-        if (base->Is(RE::FormType::Activator)) return true;
-        if (base->Is(RE::FormType::Container) && (a_ref->GetFormID() >> 24) == 0xFF) return true;
+        if (base->Is(RE::FormType::Activator)) {
+            RE::Actor* owner = GetAshPileOwner(a_ref);
+            if (owner)
+                inventoryOwner = owner;
+            else
+                return false;
+        }
+        else if (base->Is(RE::FormType::Container) && (a_ref->GetFormID() >> 24) == 0xFF) {
+            return true;
+        }
 
         // Check dynamic inventory changes (worn, added via scripts, or moved items)
         auto changes = a_ref->GetInventoryChanges();
@@ -302,35 +343,7 @@ namespace LootHook
             // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles)
             if (formType == RE::FormType::Activator) {
                 isAshGhostCorpseContainer = true;
-
-				// Caching the last detected Ash Pile to optimize performance
-                static RE::FormID lastAshPileID = 0;
-                static RE::ActorHandle lastAshPileOwnerHandle;
-                static std::mutex ashPileMutex;
-
-                // Find the original actor that turned into this ash pile
-                std::lock_guard<std::mutex> lock(ashPileMutex);
-                if (targetRef->GetFormID() == lastAshPileID) {
-                    sourceActor = lastAshPileOwnerHandle.get().get();
-                }
-                else {
-                    lastAshPileID = targetRef->GetFormID();
-                    lastAshPileOwnerHandle = RE::ActorHandle();
-
-                    if (auto processLists = RE::ProcessLists::GetSingleton()) {
-                        for (auto& handle : processLists->highActorHandles) {
-                            if (auto loadedActor = handle.get().get()) {
-                                if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
-                                    if (xAsh->ashPileRef.get().get() == targetRef) {
-                                        lastAshPileOwnerHandle = handle;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    sourceActor = lastAshPileOwnerHandle.get().get();
-                }
+                sourceActor = GetAshPileOwner(targetRef);
             }
             // Specialized handling for temporary dynamic containers (formID starts with 0xFF)
             else if (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF) {
