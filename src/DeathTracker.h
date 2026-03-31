@@ -1,8 +1,6 @@
 #pragma once
 
 #include "Settings.h"
-#include <unordered_map>
-#include <mutex>
 
 namespace LootHook
 {
@@ -51,7 +49,15 @@ namespace LootHook
                 }
 
                 std::lock_guard<std::mutex> lock(_mutex);
+                if (_deadActors.find(dyingID) == _deadActors.end()) {
+                    _deathHistory.push_back(dyingID);
+                }
                 _deadActors[dyingID] = isPlayerKill ? CorpseCategory::kPlayerKill : CorpseCategory::kNPCKill;
+                while (_deathHistory.size() > 200) {
+                    RE::FormID oldestID = _deathHistory.front();
+                    _deathHistory.pop_front();
+                    _deadActors.erase(oldestID);
+                }
             }
             return RE::BSEventNotifyControl::kContinue;
         }
@@ -67,13 +73,8 @@ namespace LootHook
                 if (it != _deadActors.end()) return it->second;
             }
 
-            // Check if the actor was flagged as 'StartsDead'
-            if ((a_actor->GetFormFlags() & 0x80000) != 0) {
-                return CorpseCategory::kPrePlacedDead;
-            }
-
-            // Fallback for deaths occurred before mod installation
-            return CorpseCategory::kPlayerKill;
+			// If not tracked, determine if pre-placed dead based on record flags
+            return CorpseCategory::kPrePlacedDead;
         }
 
         // Persists death data to the SKSE co-save
@@ -94,6 +95,7 @@ namespace LootHook
         void Load(SKSE::SerializationInterface* a_intfc) {
             std::lock_guard<std::mutex> lock(_mutex);
             _deadActors.clear();
+            _deathHistory.clear();
 
             std::uint32_t type, version, length;
             while (a_intfc->GetNextRecordInfo(type, version, length)) {
@@ -113,6 +115,7 @@ namespace LootHook
                     RE::FormID newFormID;
                     if (a_intfc->ResolveFormID(oldFormID, newFormID)) {
                         _deadActors[newFormID] = category;
+                        _deathHistory.push_back(newFormID);
                     }
                 }
             }
@@ -122,11 +125,13 @@ namespace LootHook
         void Revert(SKSE::SerializationInterface*) {
             std::lock_guard<std::mutex> lock(_mutex);
             _deadActors.clear();
+            _deathHistory.clear();
         }
 
     private:
         DeathTracker() = default;
         std::unordered_map<RE::FormID, CorpseCategory> _deadActors;
+        std::deque<RE::FormID> _deathHistory;
         std::mutex _mutex;
     };
 }

@@ -39,6 +39,13 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			Settings::LoadGameData();
 			MenuIntegration::Install();
 
+			// Register for menu open/close events to track when the player is interacting with loot/container UIs
+            auto ui = RE::UI::GetSingleton();
+            if (ui) {
+                ui->AddEventSink<RE::MenuOpenCloseEvent>(LootHook::MenuTracker::GetSingleton());
+                logs::info("Menu event sink registered successfully.");
+            }
+
 			// Register for death events after game data is loaded to ensure necessary forms are cached
             auto sourceHolder = RE::ScriptEventSourceHolder::GetSingleton();
             if (sourceHolder) {
@@ -47,6 +54,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             }
             logs::info("Game data loaded and Menu integrated.");
         }
-        });
+    });
     return true;
 }

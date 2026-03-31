@@ -43,11 +43,16 @@ namespace MenuIntegration
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Keyword Filters");
         static char keywordBuffer[256];
-        strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
+        if (keywordBuffer[0] == '\0' && !Settings::sHideKeywords.empty()) {
+            strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
+        }
         if (ImGuiMCP::InputText("Blacklisted Keywords (EditorIDs)", keywordBuffer, sizeof(keywordBuffer))) {
             Settings::sHideKeywords = keywordBuffer;
+        }
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
             Settings::LoadGameData();
-            changed = true;
+            Settings::Save();
+            changed = false;
         }
         HelpMarker("Comma-separated list of EditorIDs (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
 

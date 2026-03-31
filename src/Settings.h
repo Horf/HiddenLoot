@@ -39,6 +39,7 @@ namespace Settings
     // User defined
     inline std::string sHideKeywords = "";
     inline std::vector<std::string> hideKeywordsList;
+    inline std::vector<RE::BGSKeyword*> cachedHideKeywords;
 
     // Corpse Filters
     inline bool bApplyToPlayerKills = true;
@@ -153,22 +154,31 @@ namespace Settings
             for (RE::FormID id : ids) {
                 // Ensure the forms are specifically pulled from Skyrim.esm
                 auto kw = dataHandler->LookupForm<RE::BGSKeyword>(id, "Skyrim.esm");
-                if (kw) {
-                    uniqueKeywords.push_back(kw);
-                }
+                if (kw) uniqueKeywords.push_back(kw);
             }
         }
         hideKeywordsList.clear();
+		cachedHideKeywords.clear();
+
         if (!sHideKeywords.empty()) {
             std::stringstream ss(sHideKeywords);
             std::string token;
             while (std::getline(ss, token, ',')) {
                 token = Trim(token);
-                if (!token.empty()) {
-                    // Lookup the keyword by EditorID across all loaded plugins,
-					// using strings so dynamic keywords can be used as well
-                    if (!token.empty()) hideKeywordsList.push_back(token);
-                }     
+                // Lookup the keyword by EditorID across all loaded plugins,
+                // using strings so dynamic keywords can be used as well
+                if (!token.empty()) hideKeywordsList.push_back(token);
+            }
+            if (dataHandler) {
+                auto& allKeywords = dataHandler->GetFormArray<RE::BGSKeyword>();
+                for (auto* kw : allKeywords) {
+                    if (kw) {
+                        std::string edid = kw->GetFormEditorID();
+                        if (std::find(hideKeywordsList.begin(), hideKeywordsList.end(), edid) != hideKeywordsList.end()) {
+                            cachedHideKeywords.push_back(kw);
+                        }
+                    }
+                }
             }
         }
     }
