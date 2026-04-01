@@ -204,7 +204,16 @@ namespace LootHook
         }
 
         // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
-        if (a_this->HasKeywordInArray(Settings::cachedHideKeywords, false)) return false;
+        if (!Settings::hideKeywordsList.empty()) {
+            auto kwForm = a_this->As<RE::BGSKeywordForm>();
+            if (kwForm) {
+                for (const auto& blacklistedKW : Settings::hideKeywordsList) {
+                    if (kwForm->HasKeywordString(blacklistedKW)) {
+                        return false;
+                    }
+                }
+            }
+        }
 
         // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable
         if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
@@ -416,7 +425,6 @@ namespace LootHook
                         if (entry->IsWorn()) isWorn = true;
                         // Check for individual enchanted items in the inventory if the setting is enabled
                         if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
-
                         break;
                     }
                 }

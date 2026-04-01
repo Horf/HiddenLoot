@@ -1,6 +1,7 @@
 #include "LootHook.h"
 #include "MenuIntegration.h"
 #include "DeathTracker.h"
+#include "Settings.h"
 
 // Serialization Callbacks
 void SaveCallback(SKSE::SerializationInterface* a_intfc) {

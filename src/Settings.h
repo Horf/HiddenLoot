@@ -38,8 +38,7 @@ namespace Settings
     inline std::vector<RE::BGSKeyword*> uniqueKeywords;
     // User defined
     inline std::string sHideKeywords = "";
-    inline std::vector<std::string> hideKeywordsList;
-    inline std::vector<RE::BGSKeyword*> cachedHideKeywords;
+    inline std::vector<RE::BSFixedString> hideKeywordsList;
 
     // Corpse Filters
     inline bool bApplyToPlayerKills = true;
@@ -157,9 +156,8 @@ namespace Settings
                 if (kw) uniqueKeywords.push_back(kw);
             }
         }
-        hideKeywordsList.clear();
-		cachedHideKeywords.clear();
 
+        hideKeywordsList.clear();
         if (!sHideKeywords.empty()) {
             std::stringstream ss(sHideKeywords);
             std::string token;
@@ -167,17 +165,18 @@ namespace Settings
                 token = Trim(token);
                 // Lookup the keyword by EditorID across all loaded plugins,
                 // using strings so dynamic keywords can be used as well
-                if (!token.empty()) hideKeywordsList.push_back(token);
-            }
-            if (dataHandler) {
-                auto& allKeywords = dataHandler->GetFormArray<RE::BGSKeyword>();
-                for (auto* kw : allKeywords) {
-                    if (kw) {
-                        std::string edid = kw->GetFormEditorID();
-                        if (std::find(hideKeywordsList.begin(), hideKeywordsList.end(), edid) != hideKeywordsList.end()) {
-                            cachedHideKeywords.push_back(kw);
+                if (!token.empty()) {
+                    bool isSafe = true;
+                    for (auto* uniqueKw : uniqueKeywords) {
+                        // Safety check to prevent blacklisting essential keywords that could break the game if hidden
+                        if (uniqueKw && std::string(uniqueKw->GetFormEditorID()) == token) {
+                            logs::info("Safety Override: Prevented use of whitelisted essential keyword '{}' in blacklist.", token);
+                            isSafe = false;
+                            break;
                         }
                     }
+
+                    if (isSafe) hideKeywordsList.push_back(token);
                 }
             }
         }
@@ -199,6 +198,13 @@ namespace Settings
 
             file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
             file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n\n";
+
+
+            file << "[CorpseFilters]\n";
+            file << "; Choose which corpses the hiding rules apply to.\n";
+            file << "bApplyToPlayerKills=" << (bApplyToPlayerKills ? "true" : "false") << "\t; Killed by Player, Followers or Summons\n";
+            file << "bApplyToNPCKills=" << (bApplyToNPCKills ? "true" : "false") << "\t\t; Killed by other NPCs, Creatures, etc\n";
+            file << "bApplyToPreDead=" << (bApplyToPreDead ? "true" : "false") << "\t\t; Corpses that were already dead when you found them\n\n\n";
 
 
             file << "[Keywords]\n";
@@ -241,14 +247,7 @@ namespace Settings
 
             file << "[Pickpocket]\n";
             file << "; If true, settings apply also while pickpocketing NPCs.\n";
-            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n\n\n";
-            
-
-            file << "[CorpseFilters]\n";
-            file << "; Choose which corpses the hiding rules apply to.\n";
-            file << "bApplyToPlayerKills=" << (bApplyToPlayerKills ? "true" : "false") << "\t; Killed by Player, Followers or Summons\n";
-            file << "bApplyToNPCKills=" << (bApplyToNPCKills ? "true" : "false") << "\t\t; Killed by other NPCs, Creatures, etc\n";
-            file << "bApplyToPreDead=" << (bApplyToPreDead ? "true" : "false") << "\t\t; Corpses that were already dead when you found them\n";
+            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n";
         }
     }
 }

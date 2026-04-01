@@ -41,6 +41,15 @@ namespace MenuIntegration
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
 
         ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Corpse Filters");
+        if (ImGuiMCPComponents::ToggleButton("Apply to Player Kills", &Settings::bApplyToPlayerKills)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to enemies killed by you, your followers or summons.");
+        if (ImGuiMCPComponents::ToggleButton("Apply to NPC Kills", &Settings::bApplyToNPCKills)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to NPCs killed by other NPCs (e.g. World Events, Faction Wars). Disable this if you want free loot from battles you weren't involved in.");
+        if (ImGuiMCPComponents::ToggleButton("Apply to Pre-Dead Corpses", &Settings::bApplyToPreDead)) changed = true;
+        HelpMarker("If enabled, loot hiding rules apply to corpses that were already dead when you found them (Decoration/Quest corpses).");
+
+        ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Keyword Filters");
         static char keywordBuffer[256];
         if (keywordBuffer[0] == '\0' && !Settings::sHideKeywords.empty()) {
@@ -100,15 +109,6 @@ namespace MenuIntegration
         ImGuiMCP::SeparatorText("Pickpocket");
         if (ImGuiMCPComponents::ToggleButton("Apply to Pickpocketing", &Settings::bIncludePickpocket)) changed = true;
         HelpMarker("If enabled, settings apply also while pickpocketing NPCs.");
-
-        ImGuiMCP::Spacing();
-        ImGuiMCP::SeparatorText("Corpse Filters");
-        if (ImGuiMCPComponents::ToggleButton("Apply to Player Kills", &Settings::bApplyToPlayerKills)) changed = true;
-        HelpMarker("If enabled, loot hiding rules apply to enemies killed by you, your followers or summons.");
-        if (ImGuiMCPComponents::ToggleButton("Apply to NPC Kills", &Settings::bApplyToNPCKills)) changed = true;
-        HelpMarker("If enabled, loot hiding rules apply to NPCs killed by other NPCs (e.g. World Events, Faction Wars). Disable this if you want free loot from battles you weren't involved in.");
-        if (ImGuiMCPComponents::ToggleButton("Apply to Pre-Dead Corpses", &Settings::bApplyToPreDead)) changed = true;
-        HelpMarker("If enabled, loot hiding rules apply to corpses that were already dead when you found them (Decoration/Quest corpses).");
 
         if (changed) Settings::Save();
     }
