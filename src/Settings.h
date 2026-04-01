@@ -1,5 +1,25 @@
 #pragma once
 
+// ===== Default Library =====
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <sstream>
+#include <filesystem>
+#include <locale>
+#include <fstream>
+#include <ranges>
+#include <cctype>
+
+// ===== SKSE =====
+#include <SKSE/Logger.h>
+
+// ===== RE (Game Types) =====
+#include <RE/B/BGSKeyword.h>
+#include <RE/B/BSFixedString.h>
+#include <RE/B/BSCoreTypes.h>
+#include <RE/T/TESDataHandler.h>
+
 namespace Settings
 {
     // General
@@ -168,8 +188,10 @@ namespace Settings
                 if (!token.empty()) {
                     bool isSafe = true;
                     for (auto* uniqueKw : uniqueKeywords) {
-                        // Safety check to prevent blacklisting essential keywords that could break the game if hidden
-                        if (uniqueKw && std::string(uniqueKw->GetFormEditorID()) == token) {
+                        // Essential keywords (Quest items, Artifacts) are hardcoded for protection
+                        // This prevents players from accidentally bricking their game by blacklisting items required for progression
+                        const char* edid = uniqueKw->GetFormEditorID();
+                        if (edid && std::string(edid) == token) {
                             logs::info("Safety Override: Prevented use of whitelisted essential keyword '{}' in blacklist.", token);
                             isSafe = false;
                             break;

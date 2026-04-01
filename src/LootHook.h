@@ -1,5 +1,62 @@
 #pragma once
 
+// ===== Default Library =====
+#include <atomic>
+#include <chrono>
+#include <array>
+#include <mutex>
+#include <cstdint>
+#include <algorithm>
+#include <unordered_map>
+#include <cstdarg>
+
+// ===== SKSE =====
+#include <SKSE/Logger.h>
+
+// ===== RE (Game Types) =====
+#include <RE/Offsets_VTABLE.h>
+#include <REL/Relocation.h>
+#include <REL/Module.h>
+
+#include <RE/A/Actor.h>
+
+#include <RE/B/BSTEvent.h>
+#include <RE/B/BSContainer.h>
+#include <RE/B/BGSKeywordForm.h>
+#include <RE/B/BGSBipedObjectForm.h>
+#include <RE/B/BSPointerHandle.h>
+#include <RE/B/BSCoreTypes.h>
+#include <RE/B/BarterMenu.h>
+
+#include <RE/C/ContainerMenu.h>
+#include <RE/C/CraftingMenu.h>
+#include <RE/C/CrosshairPickData.h>
+
+#include <RE/E/ExtraAshPileRef.h>
+
+#include <RE/F/FavoritesMenu.h>
+#include <RE/F/FormTypes.h>
+
+#include <RE/G/GiftMenu.h>
+
+#include <RE/M/MenuOpenCloseEvent.h>
+#include <RE/M/MagicMenu.h>
+
+#include <RE/N/NiSmartPointer.h>
+
+#include <RE/I/InventoryMenu.h>
+
+#include <RE/P/PlayerCharacter.h>
+#include <RE/P/ProcessLists.h>
+
+#include <RE/T/TESBoundObject.h>
+#include <RE/T/TESObjectREFR.h>
+#include <RE/T/TESContainer.h>
+#include <RE/T/TESEnchantableForm.h>
+#include <RE/T/TESObjectARMO.h>
+#include <RE/T/TESObjectWEAP.h>
+
+// ===== Project =====
 #include "Settings.h"
 #include "DeathTracker.h"
 
@@ -49,10 +106,12 @@ namespace LootHook
 
 		// Due to the asynchronous nature of menu updates, this is a way to consider the loot menu "effectively open"
         // for a brief window after it closes to prevent flickering of items
-        bool IsLootMenuEffectivelyOpen() {
+        bool IsLootMenuEffectivelyOpen() const {
             if (bLootMenuOpen) return true;
             auto now = std::chrono::steady_clock::now().time_since_epoch();
             auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+            // 250ms grace period bridges the gap during UI fade-out animations or 
+            // rapid crosshair jitter to prevent items from "blinking" into view
             if (nowMs - lastLootMenuCloseTime < 250) return true;
             return false;
         }
@@ -93,6 +152,9 @@ namespace LootHook
         // Skip the item scan for activators/special container (e.g. Ash Piles)
         // These don't hold traditional inventories in the same way actors do
         if (a_allowShortcut) {
+            // Activators (Ash Piles) and dynamic containers (0xFF) often haven't initialized 
+            // their inventory changes yet. The shortcut assumes they "own" the item to 
+            // maintain UI synchronization until the engine catches up
             bool isActivator = base->Is(RE::FormType::Activator);
             bool isDynamicContainer = base->Is(RE::FormType::Container) && ((a_ref->GetFormID() >> 24) == 0xFF);
             if (isActivator || isDynamicContainer) return true;
@@ -159,14 +221,14 @@ namespace LootHook
         // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses
         size_t maxDepth = a_isLootMenuOpen ? s_historySize : (s_historySize == 0 ? 0 : 1);
 
-        // Which of the recent targets actually owns the item the UI is asking for?
-        // Iterating from newest to oldest to find the most likely match
+        // Strict search in history. Prioritizing finding the item in a known 
+        // container's real inventory before falling back to the crosshair shortcut
         for (size_t i = 0; i < maxDepth; ++i) {
             auto ref = s_targetHistory[i].get().get();
             if (!ref) continue;
             auto base = ref->GetBaseObject();
-            bool isSpecial = base && (base->Is(RE::FormType::Activator) || (ref->GetFormID() >> 24) == 0xFF);
-            if (ContainerHasItem(ref, a_item, false)) return ref;
+            bool isSpecial = base && (base->Is(RE::FormType::Activator) || (base->Is(RE::FormType::Container) && (ref->GetFormID() >> 24) == 0xFF));
+            if (ContainerHasItem(ref, a_item, isSpecial)) return ref;
         }
 
 		// Final check: If the current crosshair target has the item, it's the most likely candidate
@@ -354,6 +416,8 @@ namespace LootHook
                 }
                 else {
                     if (auto processLists = RE::ProcessLists::GetSingleton()) {
+                        // Ash Piles don't store their owner directly; scan loaded actors to find who points
+                        // to this specific activator as their "ExtraAshPileRef"
                         for (auto& handle : processLists->highActorHandles) {
                             if (auto loadedActor = handle.get().get()) {
                                 if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {

@@ -1,5 +1,15 @@
 #pragma once
 
+// ===== Default Library =====
+#include <string.h>
+
+// ===== SKSE =====
+#include <SKSE/Logger.h>
+
+// ===== RE (Game Types) =====
+#include <REL/Module.h>
+
+// ===== Project =====
 #include "SKSEMenuFramework.h"
 #include "Settings.h"
 
@@ -60,8 +70,7 @@ namespace MenuIntegration
         }
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
             Settings::LoadGameData();
-            Settings::Save();
-            changed = false;
+            changed = true;
         }
         HelpMarker("Comma-separated list of EditorIDs (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
 
