@@ -1,5 +1,21 @@
 #pragma once
 
+// ===== Default Library =====
+#include <cstdint>
+#include <mutex>
+#include <unordered_map>
+#include <deque>
+
+// ===== SKSE =====
+#include <SKSE/Interfaces.h>
+
+// ===== RE (Game Types) =====
+#include <RE/A/Actor.h>
+#include <RE/B/BSTEvent.h>
+#include <RE/B/BSCoreTypes.h>
+#include "RE/T/TESDeathEvent.h"
+
+// ===== Project =====
 #include "Settings.h"
 
 namespace LootHook
@@ -74,6 +90,8 @@ namespace LootHook
             }
 
             if ((a_actor->GetFormID() >> 24) == 0xFF) {
+                // Dynamic actors (0xFF) are often temporary spawns; defaulting to kPlayerKill 
+                // ensures loot rules stay consistent after save/load even if the original event is lost
                 return CorpseCategory::kPlayerKill;
             }
 

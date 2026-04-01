@@ -1,16 +1,28 @@
+// ===== SKSE =====
+#include <SKSE/API.h>
+#include <SKSE/Logger.h>
+#include <SKSE/Interfaces.h>
+
+// ===== RE (Game Types) =====
+#include <RE/M/MenuOpenCloseEvent.h>
+#include <RE/S/ScriptEventSourceHolder.h>
+#include <RE/T/TESDeathEvent.h>
+#include <RE/U/UI.h>
+
+// ===== Project =====
 #include "LootHook.h"
 #include "MenuIntegration.h"
 #include "DeathTracker.h"
 #include "Settings.h"
 
 // Serialization Callbacks
-void SaveCallback(SKSE::SerializationInterface* a_intfc) {
+static void SaveCallback(SKSE::SerializationInterface* a_intfc) {
     LootHook::DeathTracker::GetSingleton()->Save(a_intfc);
 }
-void LoadCallback(SKSE::SerializationInterface* a_intfc) {
+static void LoadCallback(SKSE::SerializationInterface* a_intfc) {
     LootHook::DeathTracker::GetSingleton()->Load(a_intfc);
 }
-void RevertCallback(SKSE::SerializationInterface* a_intfc) {
+static void RevertCallback(SKSE::SerializationInterface* a_intfc) {
     LootHook::DeathTracker::GetSingleton()->Revert(a_intfc);
 }
 
