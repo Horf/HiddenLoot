@@ -84,7 +84,7 @@ namespace MenuIntegration
             if (ImGuiMCPComponents::ToggleButton("Hide Head", &Settings::bUnlootableArmorHead)) changed = true;
             HelpMarker("Includes Head, Hair and Circlets.");
             if (ImGuiMCPComponents::ToggleButton("Hide Chest", &Settings::bUnlootableArmorChest)) changed = true;
-            HelpMarker("Includes Body, Chest and Back.");
+            HelpMarker("Includes Body and Chest.");
             if (ImGuiMCPComponents::ToggleButton("Hide Arms", &Settings::bUnlootableArmorArms)) changed = true;
             HelpMarker("Includes Hands, Arms, Forearms and Shoulder.");
             if (ImGuiMCPComponents::ToggleButton("Hide Legs", &Settings::bUnlootableArmorLegs)) changed = true;
@@ -107,6 +107,12 @@ namespace MenuIntegration
         if (ImGuiMCPComponents::ToggleButton("Hide Jewelry", &Settings::bUnlootableJewelry)) changed = true;
         if (ImGuiMCPComponents::ToggleButton("Only Hide Worn Jewelry", &Settings::bJewelryWornOnly)) changed = true;
         HelpMarker("If enabled, only hides the jewelry types the NPC is currently wearing.");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Backpacks");
+        if (ImGuiMCPComponents::ToggleButton("Hide Backpacks", &Settings::bUnlootableBackpacks)) changed = true;
+        if (ImGuiMCPComponents::ToggleButton("Only Hide Worn Backpacks", &Settings::bBackpacksWornOnly)) changed = true;
+        HelpMarker("If enabled, only hides backpacks the NPC is currently wearing.");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Weapons");

@@ -277,12 +277,23 @@ namespace LootHook
             }
         }
 
-        // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable
-        if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
-        if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+		// Special handling for backpacks - armor/clothing with ModBack slot (47)
+        bool isBackpack = false;
+        if (a_this->IsArmor()) {
+            auto armor = static_cast<RE::TESObjectARMO*>(a_this);
+            if (armor->GetSlotMask().any(RE::BIPED_MODEL::BipedObjectSlot::kModBack)) {
+                isBackpack = true;
+            }
+        }
 
-        // Option: Whitelist all naturally enchanted items.
-        if (Settings::bAlwaysShowEnchanted) {
+        // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
+        if (!isBackpack) {
+            if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
+            if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+        }
+
+        // Option: Whitelist all naturally enchanted items (skip if it's a backpack)
+        if (Settings::bAlwaysShowEnchanted && !isBackpack) {
             auto enchantable = a_this->As<RE::TESEnchantableForm>();
             if (enchantable && enchantable->formEnchanting) return true;
         }
@@ -292,8 +303,8 @@ namespace LootHook
         bool isArmor = false, isClothing = false, isJewelry = false;
         bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
 
-        // Categorize armor types and body slots
-        if (a_this->IsArmor()) {
+        // Categorize armor types and body slots (skip if it's a backpack)
+        if (a_this->IsArmor() && !isBackpack) {
 			auto armor = static_cast<RE::TESObjectARMO*>(a_this);
             auto CheckSlot = [&](RE::BIPED_MODEL::BipedObjectSlot a_slot) -> bool {
                 return armor->GetSlotMask().any(a_slot);
@@ -312,8 +323,7 @@ namespace LootHook
 
                 isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
                           CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
-                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary) ||
-                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModBack);
+                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary);
 
                 isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
@@ -342,8 +352,12 @@ namespace LootHook
         bool shouldHide = false;
         bool requireWorn = true;
 
-        // Match item type to user settings.
-        if (isWeapon) {
+        // Match item type to user settings
+        if (isBackpack) {
+            shouldHide = Settings::bUnlootableBackpacks;
+            requireWorn = Settings::bBackpacksWornOnly;
+        }
+        else if (isWeapon) {
             shouldHide = Settings::bUnlootableWeapons;
             requireWorn = Settings::bWeaponsWornOnly;
         }
