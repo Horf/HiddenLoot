@@ -47,6 +47,10 @@ namespace Settings
     inline bool bUnlootableJewelry = false;
     inline bool bJewelryWornOnly = true;
 
+    // Backpacks
+    inline bool bUnlootableBackpacks = false;
+    inline bool bBackpacksWornOnly = true;
+
     // Weapons
     inline bool bUnlootableWeapons = false;
     inline bool bWeaponsWornOnly = true;
@@ -147,6 +151,8 @@ namespace Settings
                     else if (key == "bClothingWornOnly") bClothingWornOnly = isTrue;
                     else if (key == "bUnlootableJewelry") bUnlootableJewelry = isTrue;
                     else if (key == "bJewelryWornOnly") bJewelryWornOnly = isTrue;
+                    else if (key == "bunlootablebackpacks") bUnlootableBackpacks = isTrue;
+                    else if (key == "bbackpackswornonly") bBackpacksWornOnly = isTrue;
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
 					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
@@ -160,7 +166,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 22) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 24) Save();
     }
 
     inline void LoadGameData() {
@@ -240,7 +246,7 @@ namespace Settings
             
             file << "; Specific body slots only (Takes effect if bUnlootableArmor=false)\n";
             file << "bUnlootableArmorHead=" << (bUnlootableArmorHead ? "true" : "false") << "\t; Includes Head, Hair and Circlets\n";
-            file << "bUnlootableArmorChest=" << (bUnlootableArmorChest ? "true" : "false") << "\t; Includes Body, Chest and Back\n";
+            file << "bUnlootableArmorChest=" << (bUnlootableArmorChest ? "true" : "false") << "\t; Includes Body and Chest\n";
             file << "bUnlootableArmorArms=" << (bUnlootableArmorArms ? "true" : "false") << "\t; Includes Hands, Arms, Forearms and Shoulder\n";
             file << "bUnlootableArmorLegs=" << (bUnlootableArmorLegs ? "true" : "false") << "\t; Includes Feet, Leg, Calves and Pelvis\n\n";
 
@@ -260,6 +266,11 @@ namespace Settings
             file << "[Jewelry]\n";
             file << "bUnlootableJewelry=" << (bUnlootableJewelry ? "true" : "false") << "\n";
             file << "bJewelryWornOnly=" << (bJewelryWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Backpacks]\n";
+            file << "bUnlootableBackpacks=" << (bUnlootableBackpacks ? "true" : "false") << "\n";
+            file << "bBackpacksWornOnly=" << (bBackpacksWornOnly ? "true" : "false") << "\n\n\n";
 
 
             file << "[Weapons]\n";
