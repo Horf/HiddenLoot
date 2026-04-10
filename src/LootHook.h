@@ -22,6 +22,7 @@
 
 #include <RE/B/BSTEvent.h>
 #include <RE/B/BSContainer.h>
+#include <RE/B/BSFixedString.h>
 #include <RE/B/BGSKeywordForm.h>
 #include <RE/B/BGSBipedObjectForm.h>
 #include <RE/B/BSPointerHandle.h>
