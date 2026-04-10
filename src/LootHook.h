@@ -81,7 +81,9 @@ namespace LootHook
         virtual RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override {
             if (!a_event) return RE::BSEventNotifyControl::kContinue;
 
-            if (a_event->menuName == "LootMenu") {
+            static const RE::BSFixedString lootMenuName("LootMenu");
+
+            if (a_event->menuName == lootMenuName) {
                 bLootMenuOpen = a_event->opening;
                 if (!a_event->opening) {
                     auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -175,6 +177,9 @@ namespace LootHook
         static size_t s_historySize = 0;
         static std::mutex s_historyMutex;
 
+        size_t localMaxDepth = 0;
+        std::array<RE::ObjectRefHandle, kHistorySize> localHistory{};
+        
         auto crosshair = RE::CrosshairPickData::GetSingleton();
         if (!crosshair) return nullptr;
 
@@ -185,11 +190,17 @@ namespace LootHook
             const auto player = RE::PlayerCharacter::GetSingleton();
             if (player) {
                 const auto& vrData = player->GetVRPlayerRuntimeData();
-                const uint32_t hand = vrData.isRightHandMainHand ? 1 : 0;
+                const uint32_t mainHand = vrData.isRightHandMainHand ? 1 : 0;
+                const uint32_t offHand = vrData.isRightHandMainHand ? 0 : 1;
 
-                if (crosshair->grabPickRef[hand]) refPtr = crosshair->grabPickRef[hand].get();
-                else if (crosshair->targetActor[hand]) refPtr = crosshair->targetActor[hand].get();
-                else if (crosshair->target[hand]) refPtr = crosshair->target[hand].get();
+                if (crosshair->grabPickRef[mainHand]) refPtr = crosshair->grabPickRef[mainHand].get();
+                else if (crosshair->grabPickRef[offHand]) refPtr = crosshair->grabPickRef[offHand].get();
+
+                else if (crosshair->targetActor[mainHand]) refPtr = crosshair->targetActor[mainHand].get();
+                else if (crosshair->targetActor[offHand]) refPtr = crosshair->targetActor[offHand].get();
+                
+                else if (crosshair->target[mainHand]) refPtr = crosshair->target[mainHand].get();
+                else if (crosshair->target[offHand]) refPtr = crosshair->target[offHand].get();
             }
         }
         else {
@@ -197,34 +208,41 @@ namespace LootHook
             if (crosshair->target[0]) refPtr = crosshair->target[0].get();
         }
 
-        // Thread safety: Lock the history buffer while updating and reading
-        std::lock_guard<std::mutex> lock(s_historyMutex);
+        {
+            // Thread safety: Lock the history buffer while updating and reading
+            std::lock_guard<std::mutex> lock(s_historyMutex);
 
-        // Update history: Push new target to front and keep only the most recent entries.
-        if (refPtr) {
-            auto currentHandle = refPtr->CreateRefHandle();
-            // Only add if it's not already the newest entry
-            if (s_historySize == 0 || s_targetHistory[0] != currentHandle) {
-                for (size_t i = kHistorySize - 1; i > 0; --i) {
-                    s_targetHistory[i] = s_targetHistory[i - 1];
+            // Update history: Push new target to front and keep only the most recent entries.
+            if (refPtr) {
+                auto currentHandle = refPtr->CreateRefHandle();
+                // Only add if it's not already the newest entry
+                if (s_historySize == 0 || s_targetHistory[0] != currentHandle) {
+                    for (size_t i = kHistorySize - 1; i > 0; --i) {
+                        s_targetHistory[i] = s_targetHistory[i - 1];
+                    }
+                    s_targetHistory[0] = currentHandle;
+                    if (s_historySize < kHistorySize) s_historySize++;
                 }
-                s_targetHistory[0] = currentHandle;
-                if (s_historySize < kHistorySize) s_historySize++;
             }
-        }
 
-        // Security check: Only use history if a looting UI is actually active
-        // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory
-        if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
+            // Security check: Only use history if a looting UI is actually active
+            // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory
+            if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
 
-		// Search depth: QuickLoot needs the full history due to async lag
-        // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses
-        size_t maxDepth = a_isLootMenuOpen ? s_historySize : (s_historySize == 0 ? 0 : 1);
+            // Search depth: QuickLoot needs the full history due to async lag
+            // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses
+            localMaxDepth = a_isLootMenuOpen ? s_historySize : (s_historySize == 0 ? 0 : 1);
+
+            // Fast copy of only the relevant handles so the lock can be released immediately
+            for (size_t i = 0; i < localMaxDepth; ++i) {
+                localHistory[i] = s_targetHistory[i];
+            }
+        } // <--- Lock is explicitly released here. The slow inventory scanning below now happens lock-free
 
         // Strict search in history. Prioritizing finding the item in a known 
         // container's real inventory before falling back to the crosshair shortcut
-        for (size_t i = 0; i < maxDepth; ++i) {
-            auto ref = s_targetHistory[i].get().get();
+        for (size_t i = 0; i < localMaxDepth; ++i) {
+            auto ref = localHistory[i].get().get();
             if (!ref) continue;
             auto base = ref->GetBaseObject();
             bool isSpecial = base && (base->Is(RE::FormType::Activator) || (base->Is(RE::FormType::Container) && (ref->GetFormID() >> 24) == 0xFF));
@@ -453,9 +471,29 @@ namespace LootHook
                 isAshGhostCorpseContainer = true;
             }
         }
+        
+        // Check if the actor is in a "knocked out" state (bleeding out or unconscious)
+        // This increases potential compatibility with death alternative or knock-out mods 
+        // that change the actor's state to incapacitated instead of killing them
+        bool isKnockedOut = false;
+        if (actor && !actor->IsDead()) {
+            auto actorState = actor->AsActorState();
+            if (actorState && (actorState->IsBleedingOut() || actorState->IsUnconscious())) isKnockedOut = true;
+        }
 
-        bool isPickpocketing = actor && !actor->IsDead() && isContainerOpen;
-        bool isValidTarget = (actor && actor->IsDead()) || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
+		// Check if the player is currently sneaking
+        bool isPlayerSneaking = false;
+        if (auto player = RE::PlayerCharacter::GetSingleton()) {
+            isPlayerSneaking = player->IsSneaking();
+        }
+
+        // Determine if the player is attempting to pickpocket the target 
+        // (actor is alive, not knocked out, container is open, and player is sneaking)
+        bool isPickpocketing = actor && !actor->IsDead() && !isKnockedOut && isContainerOpen && isPlayerSneaking;
+        
+        // Valid target check: The item is eligible for hiding if it's owned by a dead actor, 
+        // a knocked-out actor, a specialized corpse container, or via pickpocketing (if enabled)
+        bool isValidTarget = (actor && actor->IsDead()) || isKnockedOut || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
 
         if (isValidTarget) {
 
