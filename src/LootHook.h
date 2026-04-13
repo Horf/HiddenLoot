@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <cstdarg>
+#include <string_view>
 
 // ===== SKSE =====
 #include <SKSE/Logger.h>
@@ -277,11 +278,17 @@ namespace LootHook
         // Ownership validation: Find out which recent target owns the item
         auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
 
-        // Phantom-Item protection: If the item exists in the UI but no owner is found in history
-        // it's likely a lagging UI artifact or was just looted. Hide it to prevent flickering
+        // Phantom-Item protection: Hide items that lag in QuickLoot to prevent flickering
         if (!targetRef) {
-            if (isLootMenuOpen && !isContainerOpen) return false;
-            return true;
+            // Never aggressively hide items if ContainerMenu is open
+            if (isContainerOpen) return true;
+
+            // Never hide the player's own items
+            if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+
+            // If it's not the player's item, and the ContainerMenu isn't open, 
+            // it's an asynchronous artifact (either in QuickLoot or during pre-evaluation)
+            return false;
         }
 
         // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
@@ -434,7 +441,20 @@ namespace LootHook
             bool isDynamicContainer = (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF);
             // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles, FEC Frozen Containers)
             if (isActivator || isDynamicContainer) {
-                isAshGhostCorpseContainer = true;
+                // Default true for activators (Ash Piles)
+                // Default false for 0xFF containers to protect Campfire backpacks and Hearthfire furniture
+                isAshGhostCorpseContainer = isActivator;
+
+                // Hardcode fallback for FEC, MaximumCarnage, MaximumDestruction: These mods spawn standalone 0xFF corpse containers without linking them
+                if (isDynamicContainer) {
+                    auto file = baseObj->GetFile(0);
+                    if (file) {
+                        std::string_view fileName = file->GetFilename();
+                        if (fileName == "FEC.esp" || fileName == "MaximumCarnage.esp" || fileName == "MaximumDestruction.esp") {
+                            isAshGhostCorpseContainer = true;
+                        }
+                    }
+                }
 
                 // Caching the last detected Ash Pile to optimize performance.
                 static std::unordered_map<RE::FormID, RE::ActorHandle> s_ashPileMap;
@@ -466,10 +486,9 @@ namespace LootHook
                     if (!sourceActor) s_ashPileMap[targetRef->GetFormID()] = RE::ActorHandle();
                     if (s_ashPileMap.size() > 20) s_ashPileMap.clear();
                 }
-            }
-            // Specialized handling for temporary dynamic containers (formID starts with 0xFF)
-            else if (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF) {
-                isAshGhostCorpseContainer = true;
+
+                // If a dead actor explicitly points to this container, it is 100% a corpse!
+                if (sourceActor) isAshGhostCorpseContainer = true;
             }
         }
         
@@ -550,11 +569,16 @@ namespace LootHook
 			// If the item wasn't found in the dynamic inventory changes, it might still be in the base container data (e.g. pre-looted corpse or static NPC inventory)
             if (!foundInNPCInventory && ContainerHasItem(inventoryOwner, a_this, false)) foundInNPCInventory = true;
 
-            // Fallback for UI-Lag: If an item is still rendered by QuickLoot but missing from inventory, hide it
-            if (!foundInNPCInventory) {
+            // If an item is still rendered by QuickLoot but missing from inventory, hide it
+            if (!foundInNPCInventory) {        
+                // Never aggressively hide items if the big ContainerMenu is open
                 if (isContainerOpen) return true;
-                if (isLootMenuOpen) return false;
-                return true;
+
+                // If the player owns it, it's not a UI-Lag artifact, it's the player's inventory being queried
+                if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+
+                // Hide any ghost item during QuickLoot or pre-evaluation
+                return false;
             }
 
             // Safety: Never hide Quest Items or specifically whitelisted enchanted gear
