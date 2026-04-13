@@ -283,11 +283,11 @@ namespace LootHook
             // Never aggressively hide items if ContainerMenu is open
             if (isContainerOpen) return true;
 
-			// If the QuickLoot menu is open, but we can't find a valid target reference that owns the item, it's likely a phantom item due to async lag
-            if (isLootMenuOpen) return false;
-
             // Never hide the player's own items
             if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+
+            // If the QuickLoot menu is open, but we can't find a valid target reference that owns the item, it's likely a phantom item due to async lag
+            if (isLootMenuOpen) return false;
 
             // No crosshair target, no UI open so true is the default to prevent hiding items for other scripted interactions (like Odin's Gonar's Greed spell)
             return true;
@@ -576,11 +576,11 @@ namespace LootHook
                 // Never aggressively hide items if the big ContainerMenu is open
                 if (isContainerOpen) return true;
 
-                // Hide any ghost item during QuickLoot
-                if (isLootMenuOpen) return false;
-
                 // If the player owns it, it's not a UI-Lag artifact, it's the player's inventory being queried
                 if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+
+                // Hide any ghost item during QuickLoot
+                if (isLootMenuOpen) return false;
 
                 // Default to true for background scripts and spells
                 return true;
