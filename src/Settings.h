@@ -60,9 +60,15 @@ namespace Settings
 
     // Keyword Filters (fixed)
     inline std::vector<RE::BGSKeyword*> uniqueKeywords;
-    // User defined
+
+    // User defined keyword blacklist
     inline std::string sHideKeywords = "";
     inline std::vector<RE::BSFixedString> hideKeywordsList;
+
+    // Misc items defined blacklist(experimental)
+    inline std::string sMiscHideKeywords = "";
+    inline std::vector<RE::BSFixedString> miscHideKeywordsList;
+    inline float fMiscHideChance = 100.0f;
 
     // Corpse Filters
     inline bool bApplyToPlayerKills = true;
@@ -71,7 +77,8 @@ namespace Settings
 
     // Excluded NPC inventories (Base FormIDs)
     inline std::vector<RE::FormID> excludedNPCBaseIDs = {
-        0x0009B0AD // Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
+        // Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
+        0x0009B0AD
     };
 
     // Helper function to remove leading/trailing whitespace
@@ -120,7 +127,7 @@ namespace Settings
                     std::string value = Trim(trimmedLine.substr(delimiterPos + 1));
                     
                     // Strip inline comments
-                    auto commentPos = value.find_first_of("; #");
+                    auto commentPos = value.find_first_of(";#");
                     if (commentPos != std::string::npos) {
                         value = value.substr(0, commentPos);
                     }
@@ -134,7 +141,6 @@ namespace Settings
                     if (key == "bEnableMod") bEnableMod = isTrue;
                     else if (key == "bAlwaysShowEnchanted") bAlwaysShowEnchanted = isTrue;
                     else if (key == "fValueThresholdForLoot") {
-                        // Safely parse float to prevent CTD on invalid user input
                         fValueThresholdForLoot = ParseFloatSafe(value, 1000.0f);
                     }
                     else if (key == "fHideChance") {
@@ -151,8 +157,8 @@ namespace Settings
                     else if (key == "bClothingWornOnly") bClothingWornOnly = isTrue;
                     else if (key == "bUnlootableJewelry") bUnlootableJewelry = isTrue;
                     else if (key == "bJewelryWornOnly") bJewelryWornOnly = isTrue;
-                    else if (key == "bunlootablebackpacks") bUnlootableBackpacks = isTrue;
-                    else if (key == "bbackpackswornonly") bBackpacksWornOnly = isTrue;
+                    else if (key == "bUnlootableBackpacks") bUnlootableBackpacks = isTrue;
+                    else if (key == "bBackpacksWornOnly") bBackpacksWornOnly = isTrue;
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
 					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
@@ -160,32 +166,24 @@ namespace Settings
                     else if (key == "bApplyToNPCKills") bApplyToNPCKills = isTrue;
                     else if (key == "bApplyToPreDead") bApplyToPreDead = isTrue;
                     else if (key == "sHideKeywords") sHideKeywords = originalValue;
+                    else if (key == "sMiscHideKeywords") sMiscHideKeywords = originalValue;
+                    else if (key == "fMiscHideChance") {
+                        fMiscHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                    }
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
                 }
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 24) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 26) Save();
     }
 
-    inline void LoadGameData() {
-        // Cache unique keywords using FormIDs in Vanilla Skyrim.
-        // Keywords: VendorNoSale, MagicDisallowEnchanting, DaedricArtifact, MQ201ThalmorDisguise
-        auto dataHandler = RE::TESDataHandler::GetSingleton();
-        if (dataHandler) {
-            uniqueKeywords.clear();
-            std::vector<RE::FormID> ids = { 0xA8668, 0x10F5E2, 0xFF9FB, 0xC27BD };
-            for (RE::FormID id : ids) {
-                // Ensure the forms are specifically pulled from Skyrim.esm
-                auto kw = dataHandler->LookupForm<RE::BGSKeyword>(id, "Skyrim.esm");
-                if (kw) uniqueKeywords.push_back(kw);
-            }
-        }
-
-        hideKeywordsList.clear();
-        if (!sHideKeywords.empty()) {
-            std::stringstream ss(sHideKeywords);
+	// Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
+    inline void ProcessKeywords(std::vector<RE::BSFixedString> &keywordList, std::string &keywordString) {
+        keywordList.clear();
+        if (!keywordString.empty()) {
+            std::stringstream ss(keywordString);
             std::string token;
             while (std::getline(ss, token, ',')) {
                 token = Trim(token);
@@ -204,10 +202,31 @@ namespace Settings
                         }
                     }
 
-                    if (isSafe) hideKeywordsList.push_back(token);
+                    if (isSafe) keywordList.push_back(token);
                 }
             }
         }
+    }
+
+    inline void LoadGameData() {
+        // Cache unique keywords using FormIDs in Vanilla Skyrim.
+        auto dataHandler = RE::TESDataHandler::GetSingleton();
+        if (dataHandler) {
+            uniqueKeywords.clear();
+            // Keywords: VendorNoSale, MagicDisallowEnchanting, DaedricArtifact, MQ201ThalmorDisguise
+            std::vector<RE::FormID> ids = { 0xA8668, 0x10F5E2, 0xFF9FB, 0xC27BD };
+            for (RE::FormID id : ids) {
+                // Ensure the forms are specifically pulled from Skyrim.esm
+                auto kw = dataHandler->LookupForm<RE::BGSKeyword>(id, "Skyrim.esm");
+                if (kw) uniqueKeywords.push_back(kw);
+            }
+        }
+
+        // Process user-defined hide keywords
+        ProcessKeywords(hideKeywordsList, sHideKeywords);
+
+        // Process misc hide keywords (experimental)
+        ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords);
     }
 
     inline void Save()
@@ -280,7 +299,17 @@ namespace Settings
 
             file << "[Pickpocket]\n";
             file << "; If true, settings apply also while pickpocketing NPCs.\n";
-            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n";
+            file << "bIncludePickpocket=" << (bIncludePickpocket ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Clutter]\n";
+            file << "; Comma-separated list of EditorIDs for clutter items you want to hide (e.g., VendorItemClutter).\n";
+			file << "; Applies to MISC, ALCH, SCRL and BOOK item types.\n";
+            file << "; Note: Quest items, gold, lockpicks and gems are hardcoded to never be hidden.\n";
+            file << "sMiscHideKeywords=" << sMiscHideKeywords << "\n\n";
+
+            file << "; Chance in percent (0.0 to 100.0) that a blacklisted misc item gets hidden.\n";
+            file << "fMiscHideChance=" << fMiscHideChance << "\n";
         }
     }
 }
