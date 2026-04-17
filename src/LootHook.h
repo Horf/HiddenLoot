@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <cstdarg>
 #include <string_view>
+#include <vector>
 
 // ===== SKSE =====
 #include <SKSE/Logger.h>
@@ -20,6 +21,7 @@
 #include <REL/Module.h>
 
 #include <RE/A/Actor.h>
+#include <RE/A/AlchemyItem.h>
 
 #include <RE/B/BSTEvent.h>
 #include <RE/B/BSContainer.h>
@@ -51,12 +53,16 @@
 #include <RE/P/PlayerCharacter.h>
 #include <RE/P/ProcessLists.h>
 
+#include <RE/S/ScrollItem.h>
+
 #include <RE/T/TESBoundObject.h>
 #include <RE/T/TESObjectREFR.h>
 #include <RE/T/TESContainer.h>
 #include <RE/T/TESEnchantableForm.h>
+#include <RE/T/TESObjectMISC.h>
 #include <RE/T/TESObjectARMO.h>
 #include <RE/T/TESObjectWEAP.h>
+#include <RE/T/TESObjectBOOK.h>
 
 // ===== Project =====
 #include "Settings.h"
@@ -67,6 +73,10 @@ namespace LootHook
     using GetPlayable_t = bool(*)(RE::TESBoundObject*);
     inline REL::Relocation<GetPlayable_t> original_ARMO_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_MISC_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_ALCH_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_BOOK_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_SCRL_GetPlayable;
 
 	// Tracks the open/close state of relevant menus to determine if an attempt to identify a target reference for the item should be queried
     class MenuTracker : public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
@@ -293,130 +303,155 @@ namespace LootHook
             return true;
         }
 
-        // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
-        if (!Settings::hideKeywordsList.empty()) {
+        // Helper to check if the item has any keyword from a given list
+        auto HasKeywordFromList = [&](const std::vector<RE::BSFixedString>& keywordList) -> bool {
+            if (keywordList.empty()) return false;
             auto kwForm = a_this->As<RE::BGSKeywordForm>();
             if (kwForm) {
-                for (const auto& blacklistedKW : Settings::hideKeywordsList) {
-                    if (kwForm->HasKeywordString(blacklistedKW)) {
-                        return false;
-                    }
+                for (const auto& kw : keywordList) {
+                    if (kwForm->HasKeywordString(kw)) return true;
                 }
             }
-        }
+            return false;
+        };
 
-		// Special handling for backpacks - armor/clothing with ModBack slot (47)
-        bool isBackpack = false;
-        if (a_this->IsArmor()) {
-            auto armor = static_cast<RE::TESObjectARMO*>(a_this);
-            if (armor->GetSlotMask().any(RE::BIPED_MODEL::BipedObjectSlot::kModBack)) {
-                isBackpack = true;
-            }
-        }
-
-        // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
-        if (!isBackpack) {
-            if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
-            if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
-        }
-
-        // Option: Whitelist all naturally enchanted items (skip if it's a backpack)
-        if (Settings::bAlwaysShowEnchanted && !isBackpack) {
-            auto enchantable = a_this->As<RE::TESEnchantableForm>();
-            if (enchantable && enchantable->formEnchanting) return true;
-        }
-
-        // Category detection (Armor, Weapon, Clothing, Jewelry)
-        bool isWeapon = a_this->IsWeapon();
-        bool isArmor = false, isClothing = false, isJewelry = false;
-        bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
-
-        // Categorize armor types and body slots (skip if it's a backpack)
-        if (a_this->IsArmor() && !isBackpack) {
-			auto armor = static_cast<RE::TESObjectARMO*>(a_this);
-            auto CheckSlot = [&](RE::BIPED_MODEL::BipedObjectSlot a_slot) -> bool {
-                return armor->GetSlotMask().any(a_slot);
-            };
-
-            // Differentiate between generic clothing/armor and Jewelry (Rings/Amulets).
-            if (CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kAmulet) ||
-                CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kRing)) {
-                isJewelry = true;
-            }
-            else {
-                // Categorize by body slots for granular control.
-                isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
-
-                isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
-                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
-                          CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary);
-
-                isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
-
-                isLegs = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kFeet) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
-                         CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
-
-                isShield = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kShield);
-
-                if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kClothing) {
-                    isClothing = true;
-                }
-                else {
-                    isArmor = true;
-                }
-            }
-        }
-
+        bool isClutter = !a_this->IsWeapon() && !a_this->IsArmor();
+        float currentHideChance = Settings::fHideChance;
         bool shouldHide = false;
         bool requireWorn = true;
 
-        // Match item type to user settings
-        if (isBackpack) {
-            shouldHide = Settings::bUnlootableBackpacks;
-            requireWorn = Settings::bBackpacksWornOnly;
+        if (isClutter) {
+            // Absolute safety nets for Misc Items - never hide Gold or Lockpicks
+            auto formID = a_this->GetFormID();
+            if (formID == 0x0000000F || formID == 0x0000000A) return true;
+
+            // Never hide Gems
+            auto kwForm = a_this->As<RE::BGSKeywordForm>();
+            if (kwForm && kwForm->HasKeywordString("VendorItemGem")) return true;
+
+            // If the misc item isn't specifically blacklisted, show it
+            if (!HasKeywordFromList(Settings::miscHideKeywordsList)) return true;
+
+            shouldHide = true;
+            // Clutter items are never worn
+            requireWorn = false;
+            currentHideChance = Settings::fMiscHideChance;
         }
-        else if (isWeapon) {
-            shouldHide = Settings::bUnlootableWeapons;
-            requireWorn = Settings::bWeaponsWornOnly;
-        }
-        else if (isClothing) {
-            shouldHide = Settings::bUnlootableClothing;
-            requireWorn = Settings::bClothingWornOnly;
-        }
-        else if (isJewelry) {
-            shouldHide = Settings::bUnlootableJewelry;
-            requireWorn = Settings::bJewelryWornOnly;
-        }
-        else if (isArmor) {
-            if (isShield) {
-                shouldHide = Settings::bUnlootableArmorShield;
+        else {
+            // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
+            if (HasKeywordFromList(Settings::hideKeywordsList)) return false;
+
+            // Special handling for backpacks - armor/clothing with ModBack slot (47)
+            bool isBackpack = false;
+            if (a_this->IsArmor()) {
+                auto armor = static_cast<RE::TESObjectARMO*>(a_this);
+                if (armor->GetSlotMask().any(RE::BIPED_MODEL::BipedObjectSlot::kModBack)) {
+                    isBackpack = true;
+                }
             }
-            else {
-                if (Settings::bUnlootableArmor) {
-                    // Master toggle hides all regular armor
-                    shouldHide = true;
+
+            // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
+            if (!isBackpack) {
+                if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
+                if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+            }
+
+            // Option: Whitelist all naturally enchanted items (skip if it's a backpack)
+            if (Settings::bAlwaysShowEnchanted && !isBackpack) {
+                auto enchantable = a_this->As<RE::TESEnchantableForm>();
+                if (enchantable && enchantable->formEnchanting) return true;
+            }
+
+            // Category detection (Armor, Weapon, Clothing, Jewelry)
+            bool isWeapon = a_this->IsWeapon();
+            bool isArmor = false, isClothing = false, isJewelry = false;
+            bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
+
+            // Categorize armor types and body slots (skip if it's a backpack)
+            if (a_this->IsArmor() && !isBackpack) {
+                auto armor = static_cast<RE::TESObjectARMO*>(a_this);
+                auto CheckSlot = [&](RE::BIPED_MODEL::BipedObjectSlot a_slot) -> bool {
+                    return armor->GetSlotMask().any(a_slot);
+                };
+
+                // Differentiate between generic clothing/armor and Jewelry (Rings/Amulets).
+                if (CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kAmulet) ||
+                    CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kRing)) {
+                    isJewelry = true;
                 }
                 else {
-                    // Check individual body slots if master toggle is off
-                    if (isHead && Settings::bUnlootableArmorHead) shouldHide = true;
-                    if (isChest && Settings::bUnlootableArmorChest) shouldHide = true;
-                    if (isArms && Settings::bUnlootableArmorArms) shouldHide = true;
-                    if (isLegs && Settings::bUnlootableArmorLegs) shouldHide = true;
+                    // Categorize by body slots for granular control.
+                    isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
+
+                    isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
+                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
+                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary);
+
+                    isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
+
+                    isLegs = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kFeet) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
+                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
+
+                    isShield = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kShield);
+
+                    if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kClothing) {
+                        isClothing = true;
+                    }
+                    else {
+                        isArmor = true;
+                    }
                 }
             }
-            // WornOnly applies to both shields and regular armor
-            requireWorn = Settings::bArmorWornOnly;
+
+            // Match item type to user settings
+            if (isBackpack) {
+                shouldHide = Settings::bUnlootableBackpacks;
+                requireWorn = Settings::bBackpacksWornOnly;
+            }
+            else if (isWeapon) {
+                shouldHide = Settings::bUnlootableWeapons;
+                requireWorn = Settings::bWeaponsWornOnly;
+            }
+            else if (isClothing) {
+                shouldHide = Settings::bUnlootableClothing;
+                requireWorn = Settings::bClothingWornOnly;
+            }
+            else if (isJewelry) {
+                shouldHide = Settings::bUnlootableJewelry;
+                requireWorn = Settings::bJewelryWornOnly;
+            }
+            else if (isArmor) {
+                if (isShield) {
+                    shouldHide = Settings::bUnlootableArmorShield;
+                }
+                else {
+                    if (Settings::bUnlootableArmor) {
+                        // Master toggle hides all regular armor
+                        shouldHide = true;
+                    }
+                    else {
+                        // Check individual body slots if master toggle is off
+                        if (isHead && Settings::bUnlootableArmorHead) shouldHide = true;
+                        if (isChest && Settings::bUnlootableArmorChest) shouldHide = true;
+                        if (isArms && Settings::bUnlootableArmorArms) shouldHide = true;
+                        if (isLegs && Settings::bUnlootableArmorLegs) shouldHide = true;
+                    }
+                }
+                // WornOnly applies to both shields and regular armor
+                requireWorn = Settings::bArmorWornOnly;
+            }
         }
+
         // If the item type isn't configured to be hidden, allow it
         if (!shouldHide) return true;
 
@@ -428,6 +463,10 @@ namespace LootHook
 
         RE::Actor* sourceActor = actor;
         bool isAshGhostCorpseContainer = false;
+
+        // Never filter items on living followers, regardless of UI state
+        // This should prevent NFF/AFT/EFF framework scripts from being blocked
+        if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return true;
 
         if (actor) {
             // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers.
@@ -512,7 +551,7 @@ namespace LootHook
         // Determine if the player is attempting to pickpocket the target 
         // (actor is alive, not knocked out, container is open, and player is sneaking)
         bool isPickpocketing = actor && !actor->IsDead() && !isKnockedOut && isContainerOpen && isPlayerSneaking;
-        
+
         // Valid target check: The item is eligible for hiding if it's owned by a dead actor, 
         // a knocked-out actor, a specialized corpse container, or via pickpocketing (if enabled)
         bool isValidTarget = (actor && actor->IsDead()) || isKnockedOut || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
@@ -590,7 +629,7 @@ namespace LootHook
             if (isQuestObject || isExtraEnchanted)  return true;
 
             // Apply deterministic 'random' hiding based on the actor-item seed
-            if (Settings::fHideChance < 100.0f) {
+            if (currentHideChance < 100.0f) {
                 uint32_t seed = targetRef->GetFormID() ^ a_this->GetFormID();
 
                 seed = (seed ^ 61) ^ (seed >> 16);
@@ -600,7 +639,7 @@ namespace LootHook
                 seed = seed ^ (seed >> 15);
 
                 float randomVal = static_cast<float>(seed % 10000) / 100.0f;
-                if (randomVal >= Settings::fHideChance) return true;
+                if (randomVal >= currentHideChance) return true;
             }
 
             // Final decision based on 'WornOnly' setting
@@ -626,6 +665,22 @@ namespace LootHook
         return ProcessItem(a_this, original_WEAP_GetPlayable(a_this));
     }
 
+    bool Hook_MISC_GetPlayable(RE::TESObjectMISC* a_this) {
+        return ProcessItem(a_this, original_MISC_GetPlayable(a_this));
+    }
+
+    bool Hook_ALCH_GetPlayable(RE::AlchemyItem* a_this) {
+        return ProcessItem(a_this, original_ALCH_GetPlayable(a_this));
+    }
+
+    bool Hook_BOOK_GetPlayable(RE::TESObjectBOOK* a_this) {
+        return ProcessItem(a_this, original_BOOK_GetPlayable(a_this));
+    }
+
+    bool Hook_SCRL_GetPlayable(RE::ScrollItem* a_this) {
+        return ProcessItem(a_this, original_SCRL_GetPlayable(a_this));
+    }
+
     void InstallHooks()
     {
         // Hook GetPlayable for Armors
@@ -635,6 +690,22 @@ namespace LootHook
         // Hook GetPlayable for Weapons
         REL::Relocation<std::uintptr_t> weapVTable(RE::VTABLE_TESObjectWEAP[0]);
         original_WEAP_GetPlayable = weapVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_WEAP_GetPlayable));
+
+        // Hook GetPlayable for MISC
+        REL::Relocation<std::uintptr_t> miscVTable(RE::VTABLE_TESObjectMISC[0]);
+        original_MISC_GetPlayable = miscVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_MISC_GetPlayable));
+
+        // Hook GetPlayable for ALCH (Food, Poison and Potions)
+        REL::Relocation<std::uintptr_t> alchVTable(RE::VTABLE_AlchemyItem[0]);
+        original_ALCH_GetPlayable = alchVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_ALCH_GetPlayable));
+
+        // Hook GetPlayable for BOOK (Books, Notes and Journals)
+        REL::Relocation<std::uintptr_t> bookVTable(RE::VTABLE_TESObjectBOOK[0]);
+        original_BOOK_GetPlayable = bookVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_BOOK_GetPlayable));
+
+        // Hook GetPlayable for SCRL (Scrolls)
+        REL::Relocation<std::uintptr_t> scrlVTable(RE::VTABLE_ScrollItem[0]);
+        original_SCRL_GetPlayable = scrlVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_SCRL_GetPlayable));
 
         logs::info("VTable hooks applied successfully.");
     }

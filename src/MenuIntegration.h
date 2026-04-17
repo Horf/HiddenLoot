@@ -65,14 +65,14 @@ namespace MenuIntegration
         if (keywordBuffer[0] == '\0' && !Settings::sHideKeywords.empty()) {
             strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
         }
-        if (ImGuiMCP::InputText("Blacklisted Keywords (EditorIDs)", keywordBuffer, sizeof(keywordBuffer))) {
+        if (ImGuiMCP::InputText("Blacklisted Keywords", keywordBuffer, sizeof(keywordBuffer))) {
             Settings::sHideKeywords = keywordBuffer;
         }
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
             Settings::LoadGameData();
             changed = true;
         }
-        HelpMarker("Comma-separated list of EditorIDs (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
+        HelpMarker("Comma-separated list of EditorID keywords (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Armor & Shields");
@@ -124,6 +124,26 @@ namespace MenuIntegration
         ImGuiMCP::SeparatorText("Pickpocket");
         if (ImGuiMCPComponents::ToggleButton("Apply to Pickpocketing", &Settings::bIncludePickpocket)) changed = true;
         HelpMarker("If enabled, settings apply also while pickpocketing NPCs.");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Clutter Items (Misc, Food, Books)");
+        static char miscKeywordBuffer[256];
+        if (miscKeywordBuffer[0] == '\0' && !Settings::sMiscHideKeywords.empty()) {
+            strncpy_s(miscKeywordBuffer, Settings::sMiscHideKeywords.c_str(), sizeof(miscKeywordBuffer) - 1);
+        }
+        if (ImGuiMCP::InputText("Clutter Item Blacklist", miscKeywordBuffer, sizeof(miscKeywordBuffer))) {
+            Settings::sMiscHideKeywords = miscKeywordBuffer;
+        }
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+            Settings::LoadGameData();
+            changed = true;
+        }
+        HelpMarker("Comma-separated list of EditorID keywords (e.g., VendorItemClutter). Applies to MISC, ALCH, SCRL and BOOK. Quest items, gold, lockpicks, and gems are always protected.");
+
+        if (ImGuiMCP::SliderFloat("Clutter Hide Chance (%)", &Settings::fMiscHideChance, 0.0f, 100.0f, "%.1f")) {
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+        }
+        HelpMarker("Percentage chance that a blacklisted clutter item will be hidden. Completely separate from the global hide chance.");
 
         if (changed) Settings::Save();
     }
