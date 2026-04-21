@@ -37,6 +37,7 @@
 #include <RE/C/CrosshairPickData.h>
 
 #include <RE/E/ExtraAshPileRef.h>
+#include <RE/E/ExtraDataTypes.h>
 
 #include <RE/F/FavoritesMenu.h>
 #include <RE/F/FormTypes.h>
@@ -184,7 +185,7 @@ namespace LootHook
         constexpr size_t kHistorySize = 20;
 
         // Store the last unique references to bridge the gap between the real-time crosshair 
-        // and asynchronous UI updates (like QuickLoot IE).
+        // and asynchronous UI updates (like QuickLoot IE)
         static std::array<RE::ObjectRefHandle, kHistorySize> s_targetHistory{};
         static size_t s_historySize = 0;
         static std::mutex s_historyMutex;
@@ -224,7 +225,7 @@ namespace LootHook
             // Thread safety: Lock the history buffer while updating and reading
             std::lock_guard<std::mutex> lock(s_historyMutex);
 
-            // Update history: Push new target to front and keep only the most recent entries.
+            // Update history: Push new target to front and keep only the most recent entries
             if (refPtr) {
                 auto currentHandle = refPtr->CreateRefHandle();
                 // Only add if it's not already the newest entry
@@ -374,13 +375,13 @@ namespace LootHook
                     return armor->GetSlotMask().any(a_slot);
                 };
 
-                // Differentiate between generic clothing/armor and Jewelry (Rings/Amulets).
+                // Differentiate between generic clothing/armor and Jewelry (Rings/Amulets)
                 if (CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kAmulet) ||
                     CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kRing)) {
                     isJewelry = true;
                 }
                 else {
-                    // Categorize by body slots for granular control.
+                    // Categorize by body slots for granular control
                     isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
@@ -469,9 +470,14 @@ namespace LootHook
         if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return true;
 
         if (actor) {
-            // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers.
+            // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
             auto formID = baseObj->GetFormID();
             if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), formID) != Settings::excludedNPCBaseIDs.end()) {
+                return true;
+            }
+
+            // Check if the actor is a Nemesis from Shadow of Sykrim. Items on NPCs with these keywords will always be visible so the player is able to get them back
+            if (actor->HasKeywordString("_Nemesis") || actor->HasKeywordString("_ValidateNemesis")) {
                 return true;
             }
         }
@@ -491,13 +497,20 @@ namespace LootHook
                     auto file = baseObj->GetFile(0);
                     if (file) {
                         std::string_view fileName = file->GetFilename();
+
+                        // If Shadow of Skyrim is detected, all of its various backpack containers are excluded from hiding
+                        if (fileName == "Shadow of Skyrim.esp") {
+                            return true;
+                        }
+
+						// If FEC or Maximum Carnage/Destruction are detected, their standalone corpse containers are included to allow hiding their contents
                         if (fileName == "FEC.esp" || fileName == "MaximumCarnage.esp" || fileName == "MaximumDestruction.esp") {
                             isAshGhostCorpseContainer = true;
                         }
                     }
                 }
 
-                // Caching the last detected Ash Pile to optimize performance.
+                // Caching the last detected Ash Pile to optimize performance
                 static std::unordered_map<RE::FormID, RE::ActorHandle> s_ashPileMap;
                 static std::mutex ashPileMutex;
 
@@ -550,7 +563,7 @@ namespace LootHook
 
         // Determine if the player is attempting to pickpocket the target 
         // (actor is alive, not knocked out, container is open, and player is sneaking)
-        bool isPickpocketing = actor && !actor->IsDead() && !isKnockedOut && isContainerOpen && isPlayerSneaking;
+        bool isPickpocketing = actor && !actor->IsDead() && !isKnockedOut && (isContainerOpen || isLootMenuOpen) && isPlayerSneaking;
 
         // Valid target check: The item is eligible for hiding if it's owned by a dead actor, 
         // a knocked-out actor, a specialized corpse container, or via pickpocketing (if enabled)
@@ -588,11 +601,12 @@ namespace LootHook
             bool isQuestObject = false;
             bool isWorn = false;
             bool isExtraEnchanted = false;
+            bool isPlayerModified = false;
             bool foundInNPCInventory = false;
 
             RE::TESObjectREFR* inventoryOwner = sourceActor ? sourceActor : targetRef;
 
-            // Fetch live inventory data from the confirmed owner.
+            // Fetch live inventory data from the confirmed owner
             auto changes = inventoryOwner->GetInventoryChanges();
             if (changes && changes->entryList) {
                 for (auto* entry : *changes->entryList) {
@@ -602,6 +616,19 @@ namespace LootHook
                         if (entry->IsWorn()) isWorn = true;
                         // Check for individual enchanted items in the inventory if the setting is enabled
                         if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
+                        
+						// If the item has been modified by the player it should be considered as "player-owned" and not hidden
+                        if (entry->extraLists) {
+                            for (auto* xList : *entry->extraLists) {
+                                if (xList) {
+                                    if (xList->HasType(RE::ExtraDataType::kHealth) ||
+                                        xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                                        xList->HasType(RE::ExtraDataType::kEnchantment)) {
+                                        isPlayerModified = true;
+                                    }
+                                }
+                            }
+                        }
                         break;
                     }
                 }
@@ -625,8 +652,8 @@ namespace LootHook
                 return true;
             }
 
-            // Safety: Never hide Quest Items or specifically whitelisted enchanted gear
-            if (isQuestObject || isExtraEnchanted)  return true;
+            // Safety: Never hide Quest Items, specifically whitelisted enchanted gear or player-modified items (e.g. via tempering or enchanting)
+            if (isQuestObject || isExtraEnchanted || isPlayerModified)  return true;
 
             // Apply deterministic 'random' hiding based on the actor-item seed
             if (currentHideChance < 100.0f) {
@@ -648,7 +675,7 @@ namespace LootHook
                 if (isWorn) return false;
             }
             else if (isAshGhostCorpseContainer) {
-                // Specialized containers lose the 'isWorn' flag, so hide them forcefully if hiding is enabled.
+                // Specialized containers lose the 'isWorn' flag, so hide them forcefully if hiding is enabled
                 return false;
             }
             // Hide regardless of worn status
