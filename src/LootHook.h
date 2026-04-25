@@ -286,6 +286,11 @@ namespace LootHook
 
         if (isAnyOtherMenuOpen && !isContainerOpen) return true;
 
+		// Check if player is loaded (if a valid player reference with a parent cell exists)
+        // This prevents the mod from interfering with item interactions during loading screens or when the player is not fully initialized
+        auto player = RE::PlayerCharacter::GetSingleton();
+        bool isPlayerLoaded = player && player->Is3DLoaded();
+
         // Ownership validation: Find out which recent target owns the item
         auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
 
@@ -295,7 +300,7 @@ namespace LootHook
             if (isContainerOpen) return true;
 
             // Never hide the player's own items
-            if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+            if (isPlayerLoaded && ContainerHasItem(player, a_this, false)) return true;
 
             // If the QuickLoot menu is open, but we can't find a valid target reference that owns the item, it's likely a phantom item due to async lag
             if (isLootMenuOpen) return false;
@@ -621,9 +626,9 @@ namespace LootHook
                         if (entry->extraLists) {
                             for (auto* xList : *entry->extraLists) {
                                 if (xList) {
-                                    if (xList->HasType(RE::ExtraDataType::kHealth) ||
-                                        xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
-                                        xList->HasType(RE::ExtraDataType::kEnchantment)) {
+                                    if (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                                        xList->HasType(RE::ExtraDataType::kEnchantment) ||
+                                        (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth))) {
                                         isPlayerModified = true;
                                     }
                                 }
@@ -643,7 +648,7 @@ namespace LootHook
                 if (isContainerOpen) return true;
 
                 // If the player owns it, it's not a UI-Lag artifact, it's the player's inventory being queried
-                if (ContainerHasItem(RE::PlayerCharacter::GetSingleton(), a_this, false)) return true;
+                if (isPlayerLoaded && ContainerHasItem(player, a_this, false)) return true;
 
                 // Hide any ghost item during QuickLoot
                 if (isLootMenuOpen) return false;

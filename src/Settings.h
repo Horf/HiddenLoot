@@ -1,6 +1,8 @@
 #pragma once
 
 // ===== Default Library =====
+#define WIN32_LEAN_AND_MEAN
+
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -10,6 +12,7 @@
 #include <fstream>
 #include <ranges>
 #include <cctype>
+#include <windows.h>
 
 // ===== SKSE =====
 #include <SKSE/Logger.h>
@@ -74,6 +77,9 @@ namespace Settings
     inline bool bApplyToPlayerKills = true;
     inline bool bApplyToNPCKills = true;
     inline bool bApplyToPreDead = true;
+
+    // Dynamic compatibility flag
+    inline bool bIgnoreHealthExtraData = false;
 
     // Excluded NPC inventories (Base FormIDs)
     inline std::vector<RE::FormID> excludedNPCBaseIDs = {
@@ -227,6 +233,14 @@ namespace Settings
 
         // Process misc hide keywords (experimental)
         ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords);
+
+		// Check for known durability SKSE plugins and set compatibility flag
+        if (GetModuleHandleA("EquipmentDurabilitySystem-NG.dll") ||
+            GetModuleHandleA("EquipmentDurability.dll") ||
+            GetModuleHandleA("ItemDurability.dll")) {
+            bIgnoreHealthExtraData = true;
+            logs::info("Durability SKSE plugin detected! Disabling 'kHealth' protection to ensure hiding rules function correctly.");
+        }
     }
 
     inline void Save()
