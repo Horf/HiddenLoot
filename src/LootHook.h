@@ -623,13 +623,14 @@ namespace LootHook
                         if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
                         
 						// If the item has been modified by the player it should be considered as "player-owned" and not hidden
-                        if (entry->extraLists) {
+                        if (Settings::bProtectPlayerModifiedGear && entry->extraLists) {
                             for (auto* xList : *entry->extraLists) {
                                 if (xList) {
                                     if (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
                                         xList->HasType(RE::ExtraDataType::kEnchantment) ||
                                         (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth))) {
                                         isPlayerModified = true;
+                                        break;
                                     }
                                 }
                             }

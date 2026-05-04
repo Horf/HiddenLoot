@@ -40,14 +40,12 @@ namespace MenuIntegration
         if (ImGuiMCPComponents::ToggleButton("Always Show Enchanted", &Settings::bAlwaysShowEnchanted)) changed = true;
         HelpMarker("If enabled, magically enchanted items are never hidden.");
 
-        if (ImGuiMCP::SliderFloat("Hide Chance (%)", &Settings::fHideChance, 0.0f, 100.0f, "%.1f")) {
-            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
-        }
+        ImGuiMCP::SliderFloat("Hide Chance (%)", &Settings::fHideChance, 0.0f, 100.0f, "%.1f");
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker("Percentage chance that an item will be hidden. Lower values leave more random loot on bodies. 100% hides everything matching your rules.");
 
-        if (ImGuiMCP::DragFloat("Value Threshold", &Settings::fValueThresholdForLoot, 10.0f, 0.0f, 100000.0f, "%.0f", 0)) {
-            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
-        }
+        ImGuiMCP::DragFloat("Value Threshold", &Settings::fValueThresholdForLoot, 10.0f, 0.0f, 100000.0f, "%.0f", 0);
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
 
         ImGuiMCP::Spacing();
@@ -58,6 +56,13 @@ namespace MenuIntegration
         HelpMarker("If enabled, loot hiding rules apply to NPCs killed by other NPCs (e.g. World Events, Faction Wars). Disable this if you want free loot from battles you weren't involved in.");
         if (ImGuiMCPComponents::ToggleButton("Apply to Pre-Dead Corpses", &Settings::bApplyToPreDead)) changed = true;
         HelpMarker("If enabled, loot hiding rules apply to corpses that were already dead when you found them (Decoration/Quest corpses).");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Compatibility & Safety Nets");
+        if (ImGuiMCPComponents::ToggleButton("Protect Player-Modified Gear", &Settings::bProtectPlayerModifiedGear)) changed = true;
+        HelpMarker("If enabled, items that have been tempered, custom enchanted, or renamed by the player are permanently protected and will never be hidden. Disable this if mods like 'Vibrant Weapons' cause the hiding system to fail.");
+        if (ImGuiMCPComponents::ToggleButton("Ignore Health/Durability Data", &Settings::bIgnoreHealthExtraData)) changed = true;
+        HelpMarker("Enable this manually if you use a Durability/Degradation mod that isn't automatically detected. It prevents the mod from thinking all degraded items are tempered player-gear.");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Keyword Filters");
@@ -140,9 +145,8 @@ namespace MenuIntegration
         }
         HelpMarker("Comma-separated list of EditorID keywords (e.g., VendorItemClutter). Applies to MISC, ALCH, SCRL and BOOK. Quest items, gold, lockpicks, and gems are always protected.");
 
-        if (ImGuiMCP::SliderFloat("Clutter Hide Chance (%)", &Settings::fMiscHideChance, 0.0f, 100.0f, "%.1f")) {
-            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
-        }
+        ImGuiMCP::SliderFloat("Clutter Hide Chance (%)", &Settings::fMiscHideChance, 0.0f, 100.0f, "%.1f");
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker("Percentage chance that a blacklisted clutter item will be hidden. Completely separate from the global hide chance.");
 
         if (changed) Settings::Save();

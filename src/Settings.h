@@ -78,6 +78,9 @@ namespace Settings
     inline bool bApplyToNPCKills = true;
     inline bool bApplyToPreDead = true;
 
+    // Safety Net Toggles
+    inline bool bProtectPlayerModifiedGear = true;
+
     // Dynamic compatibility flag
     inline bool bIgnoreHealthExtraData = false;
 
@@ -171,6 +174,8 @@ namespace Settings
                     else if (key == "bApplyToPlayerKills") bApplyToPlayerKills = isTrue;
                     else if (key == "bApplyToNPCKills") bApplyToNPCKills = isTrue;
                     else if (key == "bApplyToPreDead") bApplyToPreDead = isTrue;
+                    else if (key == "bProtectPlayerModifiedGear") bProtectPlayerModifiedGear = isTrue;
+                    else if (key == "bIgnoreHealthExtraData") bIgnoreHealthExtraData = isTrue;
                     else if (key == "sHideKeywords") sHideKeywords = originalValue;
                     else if (key == "sMiscHideKeywords") sMiscHideKeywords = originalValue;
                     else if (key == "fMiscHideChance") {
@@ -182,7 +187,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 26) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 28) Save();
     }
 
 	// Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
@@ -226,6 +231,12 @@ namespace Settings
                 auto kw = dataHandler->LookupForm<RE::BGSKeyword>(id, "Skyrim.esm");
                 if (kw) uniqueKeywords.push_back(kw);
             }
+
+            // Auto-Detect for ESPs
+            if (dataHandler->LookupModByName("ServiceYourGear.esp")) {
+                bIgnoreHealthExtraData = true;
+                logs::info("ServiceYourGear.esp detected! Disabling 'kHealth' protection.");
+            }
         }
 
         // Process user-defined hide keywords
@@ -266,6 +277,13 @@ namespace Settings
             file << "bApplyToPlayerKills=" << (bApplyToPlayerKills ? "true" : "false") << "\t; Killed by Player, Followers or Summons\n";
             file << "bApplyToNPCKills=" << (bApplyToNPCKills ? "true" : "false") << "\t\t; Killed by other NPCs, Creatures, etc\n";
             file << "bApplyToPreDead=" << (bApplyToPreDead ? "true" : "false") << "\t\t; Corpses that were already dead when you found them\n\n\n";
+
+
+            file << "[Compatibility]\n";
+            file << "; If true, items modified by the player (tempered, enchanted, renamed) will not be hidden.\n";
+            file << "bProtectPlayerModifiedGear=" << (bProtectPlayerModifiedGear ? "true" : "false") << "\n\n";
+            file << "; Disable the 'tempered' check entirely. Enable this if a Durability mod is hiding all items.\n";
+            file << "bIgnoreHealthExtraData=" << (bIgnoreHealthExtraData ? "true" : "false") << "\n\n\n";
 
 
             file << "[Keywords]\n";
