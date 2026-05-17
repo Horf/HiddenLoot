@@ -64,6 +64,7 @@
 #include <RE/T/TESObjectARMO.h>
 #include <RE/T/TESObjectWEAP.h>
 #include <RE/T/TESObjectBOOK.h>
+#include <RE/T/TESAmmo.h>
 
 // ===== Project =====
 #include "Settings.h"
@@ -78,6 +79,7 @@ namespace LootHook
     inline REL::Relocation<GetPlayable_t> original_ALCH_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_BOOK_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_SCRL_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_AMMO_GetPlayable;
 
 	// Tracks the open/close state of relevant menus to determine if an attempt to identify a target reference for the item should be queried
     class MenuTracker : public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
@@ -321,7 +323,8 @@ namespace LootHook
             return false;
         };
 
-        bool isClutter = !a_this->IsWeapon() && !a_this->IsArmor();
+        bool isAmmo = a_this->IsAmmo();
+        bool isClutter = !a_this->IsWeapon() && !a_this->IsArmor() && !isAmmo;
         float currentHideChance = Settings::fHideChance;
         bool shouldHide = false;
         bool requireWorn = true;
@@ -427,6 +430,10 @@ namespace LootHook
             else if (isWeapon) {
                 shouldHide = Settings::bUnlootableWeapons;
                 requireWorn = Settings::bWeaponsWornOnly;
+            }
+            else if (isAmmo) {
+                shouldHide = Settings::bUnlootableAmmo;
+                requireWorn = Settings::bAmmoWornOnly;
             }
             else if (isClothing) {
                 shouldHide = Settings::bUnlootableClothing;
@@ -714,6 +721,10 @@ namespace LootHook
         return ProcessItem(a_this, original_SCRL_GetPlayable(a_this));
     }
 
+    bool Hook_AMMO_GetPlayable(RE::TESAmmo* a_this) {
+        return ProcessItem(a_this, original_AMMO_GetPlayable(a_this));
+    }
+
     void InstallHooks()
     {
         // Hook GetPlayable for Armors
@@ -723,7 +734,7 @@ namespace LootHook
         // Hook GetPlayable for Weapons
         REL::Relocation<std::uintptr_t> weapVTable(RE::VTABLE_TESObjectWEAP[0]);
         original_WEAP_GetPlayable = weapVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_WEAP_GetPlayable));
-
+        
         // Hook GetPlayable for MISC
         REL::Relocation<std::uintptr_t> miscVTable(RE::VTABLE_TESObjectMISC[0]);
         original_MISC_GetPlayable = miscVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_MISC_GetPlayable));
@@ -739,6 +750,10 @@ namespace LootHook
         // Hook GetPlayable for SCRL (Scrolls)
         REL::Relocation<std::uintptr_t> scrlVTable(RE::VTABLE_ScrollItem[0]);
         original_SCRL_GetPlayable = scrlVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_SCRL_GetPlayable));
+
+        // Hook GetPlayable for AMMO (Arrows & Bolts)
+        REL::Relocation<std::uintptr_t> ammoVTable(RE::VTABLE_TESAmmo[0]);
+        original_AMMO_GetPlayable = ammoVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_AMMO_GetPlayable));
 
         logs::info("VTable hooks applied successfully.");
     }

@@ -58,6 +58,10 @@ namespace Settings
     inline bool bUnlootableWeapons = false;
     inline bool bWeaponsWornOnly = true;
 
+    // Ammo
+    inline bool bUnlootableAmmo = false;
+    inline bool bAmmoWornOnly = false;
+
     // Pickpocket
     inline bool bIncludePickpocket = false;
 
@@ -170,7 +174,9 @@ namespace Settings
                     else if (key == "bBackpacksWornOnly") bBackpacksWornOnly = isTrue;
                     else if (key == "bUnlootableWeapons") bUnlootableWeapons = isTrue;
                     else if (key == "bWeaponsWornOnly") bWeaponsWornOnly = isTrue;
-					else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
+                    else if (key == "bUnlootableAmmo") bUnlootableAmmo = isTrue;
+                    else if (key == "bAmmoWornOnly") bAmmoWornOnly = isTrue;
+                    else if (key == "bIncludePickpocket") bIncludePickpocket = isTrue;
                     else if (key == "bApplyToPlayerKills") bApplyToPlayerKills = isTrue;
                     else if (key == "bApplyToNPCKills") bApplyToNPCKills = isTrue;
                     else if (key == "bApplyToPreDead") bApplyToPreDead = isTrue;
@@ -187,7 +193,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 28) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 30) Save();
     }
 
 	// Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
@@ -327,6 +333,11 @@ namespace Settings
             file << "[Weapons]\n";
             file << "bUnlootableWeapons=" << (bUnlootableWeapons ? "true" : "false") << "\n";
             file << "bWeaponsWornOnly=" << (bWeaponsWornOnly ? "true" : "false") << "\n\n\n";
+
+
+            file << "[Ammo]\n";
+            file << "bUnlootableAmmo=" << (bUnlootableAmmo ? "true" : "false") << "\n";
+            file << "bAmmoWornOnly=" << (bAmmoWornOnly ? "true" : "false") << "\n\n\n";
 
 
             file << "[Pickpocket]\n";

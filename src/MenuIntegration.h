@@ -126,6 +126,12 @@ namespace MenuIntegration
         HelpMarker("If enabled, only hides the weapon types the NPC is currently wearing.");
 
         ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Ammunition");
+        if (ImGuiMCPComponents::ToggleButton("Hide Ammunition", &Settings::bUnlootableAmmo)) changed = true;
+        if (ImGuiMCPComponents::ToggleButton("Only Hide Equipped Ammo", &Settings::bAmmoWornOnly)) changed = true;
+        HelpMarker("If enabled, only hides the ammunition the NPC currently has equipped (e.g. arrows in quiver).");
+        
+        ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Pickpocket");
         if (ImGuiMCPComponents::ToggleButton("Apply to Pickpocketing", &Settings::bIncludePickpocket)) changed = true;
         HelpMarker("If enabled, settings apply also while pickpocketing NPCs.");
