@@ -21,7 +21,10 @@
 #include <RE/B/BGSKeyword.h>
 #include <RE/B/BSFixedString.h>
 #include <RE/B/BSCoreTypes.h>
+#include <RE/T/TESBoundObject.h>
 #include <RE/T/TESDataHandler.h>
+#include <RE/T/TESForm.h>
+#include <RE/T/TESNPC.h>
 
 namespace Settings
 {
@@ -88,11 +91,13 @@ namespace Settings
     // Dynamic compatibility flag
     inline bool bIgnoreHealthExtraData = false;
 
-    // Excluded NPC inventories (Base FormIDs)
-    inline std::vector<RE::FormID> excludedNPCBaseIDs = {
-        // Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
-        0x0009B0AD
-    };
+	// NPC Whitelist (by EditorID, converted to FormIDs at runtime)
+    inline std::string sExcludedNPCs = "";
+    inline std::vector<RE::FormID> excludedNPCBaseIDs;
+
+    // Item Whitelist
+    inline std::string sWhitelistedItems = "";
+    inline std::vector<RE::FormID> whitelistedItemBaseIDs;
 
     // Helper function to remove leading/trailing whitespace
     inline std::string Trim(const std::string& str) {
@@ -183,6 +188,8 @@ namespace Settings
                     else if (key == "bProtectPlayerModifiedGear") bProtectPlayerModifiedGear = isTrue;
                     else if (key == "bIgnoreHealthExtraData") bIgnoreHealthExtraData = isTrue;
                     else if (key == "sHideKeywords") sHideKeywords = originalValue;
+                    else if (key == "sExcludedNPCs") sExcludedNPCs = originalValue;
+                    else if (key == "sWhitelistedItems") sWhitelistedItems = originalValue;
                     else if (key == "sMiscHideKeywords") sMiscHideKeywords = originalValue;
                     else if (key == "fMiscHideChance") {
                         fMiscHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
@@ -193,7 +200,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 30) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 31) Save();
     }
 
 	// Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
@@ -258,6 +265,59 @@ namespace Settings
             bIgnoreHealthExtraData = true;
             logs::info("Durability SKSE plugin detected! Disabling 'kHealth' protection to ensure hiding rules function correctly.");
         }
+
+        // Process excluded NPCs (EditorIDs to FormIDs)
+        excludedNPCBaseIDs.clear();
+
+        // Hardcoded safety net: Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
+        excludedNPCBaseIDs.push_back(0x0009B0AD);
+
+        // Parse user defined EditorIDs
+        if (!sExcludedNPCs.empty()) {
+            std::stringstream ss(sExcludedNPCs);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                token = Trim(token);
+                if (!token.empty()) {
+                    auto npcForm = RE::TESForm::LookupByEditorID<RE::TESNPC>(token);
+                    if (npcForm) {
+                        excludedNPCBaseIDs.push_back(npcForm->GetFormID());
+                    }
+                    else {
+                        logs::warn("NPC Whitelist: Could not find NPC with EditorID '{}'", token);
+                    }
+                }
+            }
+        }
+
+        // Remove duplicates (in case the user manually added Gunjar or typed someone twice)
+		// and sort for incredibly fast std::binary_search lookups later
+        std::sort(excludedNPCBaseIDs.begin(), excludedNPCBaseIDs.end());
+        excludedNPCBaseIDs.erase(std::unique(excludedNPCBaseIDs.begin(), excludedNPCBaseIDs.end()), excludedNPCBaseIDs.end());
+    
+        // Process user defined Whitelisted Items (EditorIDs to FormIDs)
+        whitelistedItemBaseIDs.clear();
+        if (!sWhitelistedItems.empty()) {
+            std::stringstream ss(sWhitelistedItems);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                token = Trim(token);
+                if (!token.empty()) {
+                    auto itemForm = RE::TESForm::LookupByEditorID<RE::TESBoundObject>(token);
+                    if (itemForm) {
+                        whitelistedItemBaseIDs.push_back(itemForm->GetFormID());
+                    }
+                    else {
+                        logs::warn("Item Whitelist: Could not find item with EditorID '{}'", token);
+                    }
+                }
+            }
+        }
+
+		// Remove duplicates (in case the user typed an EditorID twice)
+        // Sort for incredibly fast std::binary_search lookups later
+        std::sort(whitelistedItemBaseIDs.begin(), whitelistedItemBaseIDs.end());
+        whitelistedItemBaseIDs.erase(std::unique(whitelistedItemBaseIDs.begin(), whitelistedItemBaseIDs.end()), whitelistedItemBaseIDs.end());
     }
 
     inline void Save()
@@ -296,6 +356,17 @@ namespace Settings
             file << "; Comma-separated list of EditorIDs for keywords that should ALWAYS hide an item.\n";
             file << "; Example: sHideKeywords=IsJunk, FollowerArrowKeyword\n";
             file << "sHideKeywords=" << sHideKeywords << "\n\n\n";
+
+
+            file << "[NPCWhitelist]\n";
+            file << "; Comma-separated list of NPC EditorIDs. Items on these NPCs will NEVER be hidden.\n";
+            file << "; Note: Gunjar (Tutorial) is hardcoded to be protected to prevent softlocks.\n";
+            file << "sExcludedNPCs=" << sExcludedNPCs << "\n\n\n";
+
+
+            file << "[ItemWhitelist]\n";
+            file << "; Comma-separated list of Item EditorIDs (e.g., IronSword, VendorItemRecipe). These items will NEVER be hidden, bypassing all other rules.\n";
+            file << "sWhitelistedItems=" << sWhitelistedItems << "\n\n\n";
 
 
             file << "[Armor]\n";

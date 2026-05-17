@@ -311,6 +311,14 @@ namespace LootHook
             return true;
         }
 
+		// Item whitelist priority: If the item has any of the user-defined whitelist keywords, it should always be shown regardless of other settings
+        if (!Settings::whitelistedItemBaseIDs.empty()) {
+            auto itemFormID = a_this->GetFormID();
+            if (std::binary_search(Settings::whitelistedItemBaseIDs.begin(), Settings::whitelistedItemBaseIDs.end(), itemFormID)) {
+                return true;
+            }
+        }
+
         // Helper to check if the item has any keyword from a given list
         auto HasKeywordFromList = [&](const std::vector<RE::BSFixedString>& keywordList) -> bool {
             if (keywordList.empty()) return false;

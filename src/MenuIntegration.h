@@ -80,6 +80,36 @@ namespace MenuIntegration
         HelpMarker("Comma-separated list of EditorID keywords (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
 
         ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("NPC Whitelist");
+        static char npcBuffer[256];
+        if (npcBuffer[0] == '\0' && !Settings::sExcludedNPCs.empty()) {
+            strncpy_s(npcBuffer, Settings::sExcludedNPCs.c_str(), sizeof(npcBuffer) - 1);
+        }
+        if (ImGuiMCP::InputText("Excluded NPCs", npcBuffer, sizeof(npcBuffer))) {
+            Settings::sExcludedNPCs = npcBuffer;
+        }
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+            Settings::LoadGameData();
+            changed = true;
+        }
+        HelpMarker("Comma-separated list of NPC EditorIDs (e.g., Ulfric, Tullius). Items on these specific NPCs will NEVER be hidden. Case-sensitive! Gunjar is permanently protected.");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Item Whitelist");
+        static char itemBuffer[256];
+        if (itemBuffer[0] == '\0' && !Settings::sWhitelistedItems.empty()) {
+            strncpy_s(itemBuffer, Settings::sWhitelistedItems.c_str(), sizeof(itemBuffer) - 1);
+        }
+        if (ImGuiMCP::InputText("Whitelisted Items", itemBuffer, sizeof(itemBuffer))) {
+            Settings::sWhitelistedItems = itemBuffer;
+        }
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
+            Settings::LoadGameData();
+            changed = true;
+        }
+        HelpMarker("Comma-separated list of Item EditorIDs (e.g., IronSword, VendorItemRecipe). These items will NEVER be hidden, bypassing all blacklists and hiding rules. Case-sensitive!");
+
+        ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Armor & Shields");
         if (ImGuiMCPComponents::ToggleButton("Hide Armor", &Settings::bUnlootableArmor)) changed = true;
         HelpMarker("If disabled you can define bodyslot options (head, chest, arms and legs) seperately.");
