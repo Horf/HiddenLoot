@@ -48,6 +48,37 @@ namespace MenuIntegration
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker("Items with a gold value equal to or higher than this threshold will always be lootable.");
 
+        ImGuiMCP::DragFloat("Value/Weight Threshold", &Settings::fValueWeightThresholdForLoot, 1.0f, 0.0f, 10000.0f, "%.1f", 0);
+        if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+        HelpMarker("Items with a Gold/Weight ratio equal to or higher than this will always be lootable. Set to 0 to disable.");
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Advanced Hide Chances");
+        if (ImGuiMCPComponents::ToggleButton("Use Category Specific Chances", &Settings::bUseCategoryHideChances)) changed = true;
+        HelpMarker("If enabled, the specific chances below will override the global Hide Chance.");
+
+        if (Settings::bUseCategoryHideChances) {
+            ImGuiMCP::Indent(15.0f);
+            ImGuiMCP::SliderFloat("Armor & Shields (%)", &Settings::fHideChanceArmor, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            ImGuiMCP::SliderFloat("Weapons & Ammo (%)", &Settings::fHideChanceWeapons, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            ImGuiMCP::SliderFloat("Clothing & Jewelry (%)", &Settings::fHideChanceClothing, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            ImGuiMCP::Unindent(15.0f);
+        }
+
+        if (ImGuiMCPComponents::ToggleButton("Enable Skill Scaling", &Settings::bEnableSkillScaling)) changed = true;
+        HelpMarker("Dynamically reduces the hide chance based on the player's skill associated with the item (e.g. Heavy Armor skill protects heavy armors).");
+
+        if (Settings::bEnableSkillScaling) {
+            ImGuiMCP::Indent(15.0f);
+            ImGuiMCP::SliderFloat("Max Skill Reduction (%)", &Settings::fMaxSkillHideReduction, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            HelpMarker("The maximum percentage the hide chance is reduced when the corresponding skill is at level 100.");
+            ImGuiMCP::Unindent(15.0f);
+        }
+
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Corpse Filters");
         if (ImGuiMCPComponents::ToggleButton("Apply to Player Kills", &Settings::bApplyToPlayerKills)) changed = true;
@@ -70,14 +101,14 @@ namespace MenuIntegration
         if (keywordBuffer[0] == '\0' && !Settings::sHideKeywords.empty()) {
             strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
         }
-        if (ImGuiMCP::InputText("Blacklisted Keywords", keywordBuffer, sizeof(keywordBuffer))) {
+        if (ImGuiMCP::InputText("Blacklisted Keywords & Mods", keywordBuffer, sizeof(keywordBuffer))) {
             Settings::sHideKeywords = keywordBuffer;
         }
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
             Settings::LoadGameData();
             changed = true;
         }
-        HelpMarker("Comma-separated list of EditorID keywords (e.g., IsJunk). Items with these keywords will ALWAYS be hidden. Case-sensitive!");
+        HelpMarker("Comma-separated list of EditorID keywords or mod filenames (e.g., IsJunk, MyMod.esp). Items with these keywords or from these mods will ALWAYS be hidden. Case-sensitive!");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("NPC Whitelist");
@@ -100,14 +131,14 @@ namespace MenuIntegration
         if (itemBuffer[0] == '\0' && !Settings::sWhitelistedItems.empty()) {
             strncpy_s(itemBuffer, Settings::sWhitelistedItems.c_str(), sizeof(itemBuffer) - 1);
         }
-        if (ImGuiMCP::InputText("Whitelisted Items", itemBuffer, sizeof(itemBuffer))) {
+        if (ImGuiMCP::InputText("Whitelisted Items & Mods", itemBuffer, sizeof(itemBuffer))) {
             Settings::sWhitelistedItems = itemBuffer;
         }
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) {
             Settings::LoadGameData();
             changed = true;
         }
-        HelpMarker("Comma-separated list of Item EditorIDs (e.g., IronSword, VendorItemRecipe). These items will NEVER be hidden, bypassing all blacklists and hiding rules. Case-sensitive!");
+        HelpMarker("Comma-separated list of Item EditorIDs or mod filenames (e.g., IronSword, MyMod.esp). These items will NEVER be hidden, bypassing all rules. Case-sensitive!");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Armor & Shields");
@@ -181,7 +212,7 @@ namespace MenuIntegration
         }
         HelpMarker("Comma-separated list of EditorID keywords (e.g., VendorItemClutter). Applies to MISC, ALCH, SCRL and BOOK. Quest items, gold, lockpicks, and gems are always protected.");
 
-        ImGuiMCP::SliderFloat("Clutter Hide Chance (%)", &Settings::fMiscHideChance, 0.0f, 100.0f, "%.1f");
+        ImGuiMCP::SliderFloat("Clutter Hide Chance (%)", &Settings::fHideChanceMisc, 0.0f, 100.0f, "%.1f");
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker("Percentage chance that a blacklisted clutter item will be hidden. Completely separate from the global hide chance.");
 
@@ -190,10 +221,6 @@ namespace MenuIntegration
 
     inline void Install()
     {
-        if (REL::Module::IsVR()) {
-            logs::info("VR detected. Skipping SKSE Menu Framework integration.");
-            return;
-        }
         if (SKSEMenuFramework::IsInstalled()) {
             SKSEMenuFramework::SetSection("Hidden Loot");
             SKSEMenuFramework::AddSectionItem("Settings", RenderMenu);

@@ -33,6 +33,7 @@ namespace Settings
     inline bool bAlwaysShowEnchanted = false;
     inline float fHideChance = 100.0f;
     inline float fValueThresholdForLoot = 1000.0f;
+    inline float fValueWeightThresholdForLoot = 0.0f;
 
     // Armor & Shields
     inline bool bUnlootableArmor = true;
@@ -78,7 +79,18 @@ namespace Settings
     // Misc items defined blacklist(experimental)
     inline std::string sMiscHideKeywords = "";
     inline std::vector<RE::BSFixedString> miscHideKeywordsList;
-    inline float fMiscHideChance = 100.0f;
+
+    // Hide chances
+    inline float fHideChanceMisc = 100.0f;
+
+    inline bool bUseCategoryHideChances = false;
+    inline float fHideChanceArmor = 100.0f;
+    inline float fHideChanceWeapons = 100.0f;
+    inline float fHideChanceClothing = 100.0f;
+
+    // skill-based scaling
+    inline bool bEnableSkillScaling = false;
+    inline float fMaxSkillHideReduction = 0.0f;
 
     // Corpse Filters
     inline bool bApplyToPlayerKills = true;
@@ -98,6 +110,10 @@ namespace Settings
     // Item Whitelist
     inline std::string sWhitelistedItems = "";
     inline std::vector<RE::FormID> whitelistedItemBaseIDs;
+
+    // Mod Whitelist / Blacklist
+    inline std::vector<std::string> whitelistedModsList;
+    inline std::vector<std::string> blacklistedModsList;
 
     // Helper function to remove leading/trailing whitespace
     inline std::string Trim(const std::string& str) {
@@ -119,6 +135,47 @@ namespace Settings
             return fallback;
         }
         return result;
+    }
+
+    // Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
+    inline void ProcessKeywords(std::vector<RE::BSFixedString>& keywordList, std::string& keywordString, std::vector<std::string>* blacklistedMods = nullptr) {
+        keywordList.clear();
+        if (blacklistedMods) {
+            blacklistedMods->clear();
+        }
+        if (!keywordString.empty()) {
+            std::stringstream ss(keywordString);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                token = Trim(token);
+                // Lookup the keyword by EditorID across all loaded plugins,
+                // using strings so dynamic keywords can be used as well
+                if (!token.empty()) {
+                    // check if it's a mod file
+					std::string lowerToken = token;
+					std::transform(lowerToken.begin(), lowerToken.end(), lowerToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+					if (lowerToken.find(".esp") != std::string::npos || lowerToken.find(".esm") != std::string::npos || lowerToken.find(".esl") != std::string::npos) {
+						if (blacklistedMods) {
+							blacklistedMods->push_back(lowerToken);
+						}
+					} else {
+                        bool isSafe = true;
+                        for (auto* uniqueKw : uniqueKeywords) {
+                            // Essential keywords (Quest items, Artifacts) are hardcoded for protection
+                            // This prevents players from accidentally bricking their game by blacklisting items required for progression
+                            const char* edid = uniqueKw->GetFormEditorID();
+                            if (edid && std::string(edid) == token) {
+                                logs::info("Safety Override: Prevented use of whitelisted essential keyword '{}' in blacklist.", token);
+                                isSafe = false;
+                                break;
+                            }
+                        }
+
+                        if (isSafe) keywordList.push_back(token);
+                    }
+                }
+            }
+        }
     }
 
     inline void Save();
@@ -161,6 +218,9 @@ namespace Settings
                     else if (key == "fValueThresholdForLoot") {
                         fValueThresholdForLoot = ParseFloatSafe(value, 1000.0f);
                     }
+                    else if (key == "fValueWeightThresholdForLoot") {
+                        fValueWeightThresholdForLoot = ParseFloatSafe(value, 0.0f);
+                    }
                     else if (key == "fHideChance") {
                         fHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
                     }
@@ -192,7 +252,21 @@ namespace Settings
                     else if (key == "sWhitelistedItems") sWhitelistedItems = originalValue;
                     else if (key == "sMiscHideKeywords") sMiscHideKeywords = originalValue;
                     else if (key == "fMiscHideChance") {
-                        fMiscHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChanceMisc = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                    }
+					else if (key == "bUseCategoryHideChances") bUseCategoryHideChances = isTrue;
+                    else if (key == "fHideChanceArmor") {
+                        fHideChanceArmor = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                    }
+                    else if (key == "fHideChanceWeapons") {
+                        fHideChanceWeapons = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                    }
+                    else if (key == "fHideChanceClothing") {
+                        fHideChanceClothing = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                    }
+                    else if (key == "bEnableSkillScaling") bEnableSkillScaling = isTrue;
+                    else if (key == "fMaxSkillHideReduction") {
+                        fMaxSkillHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
                     }
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
@@ -200,36 +274,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 31) Save();
-    }
-
-	// Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
-    inline void ProcessKeywords(std::vector<RE::BSFixedString> &keywordList, std::string &keywordString) {
-        keywordList.clear();
-        if (!keywordString.empty()) {
-            std::stringstream ss(keywordString);
-            std::string token;
-            while (std::getline(ss, token, ',')) {
-                token = Trim(token);
-                // Lookup the keyword by EditorID across all loaded plugins,
-                // using strings so dynamic keywords can be used as well
-                if (!token.empty()) {
-                    bool isSafe = true;
-                    for (auto* uniqueKw : uniqueKeywords) {
-                        // Essential keywords (Quest items, Artifacts) are hardcoded for protection
-                        // This prevents players from accidentally bricking their game by blacklisting items required for progression
-                        const char* edid = uniqueKw->GetFormEditorID();
-                        if (edid && std::string(edid) == token) {
-                            logs::info("Safety Override: Prevented use of whitelisted essential keyword '{}' in blacklist.", token);
-                            isSafe = false;
-                            break;
-                        }
-                    }
-
-                    if (isSafe) keywordList.push_back(token);
-                }
-            }
-        }
+        if (!std::filesystem::exists(iniPath) || keysFound < 39) Save();
     }
 
     inline void LoadGameData() {
@@ -252,8 +297,8 @@ namespace Settings
             }
         }
 
-        // Process user-defined hide keywords
-        ProcessKeywords(hideKeywordsList, sHideKeywords);
+        // Process user-defined hide keywords (and blacklisted mods)
+        ProcessKeywords(hideKeywordsList, sHideKeywords, &blacklistedModsList);
 
         // Process misc hide keywords (experimental)
         ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords);
@@ -295,20 +340,29 @@ namespace Settings
         std::sort(excludedNPCBaseIDs.begin(), excludedNPCBaseIDs.end());
         excludedNPCBaseIDs.erase(std::unique(excludedNPCBaseIDs.begin(), excludedNPCBaseIDs.end()), excludedNPCBaseIDs.end());
     
-        // Process user defined Whitelisted Items (EditorIDs to FormIDs)
+        // Process user defined Whitelisted Items (EditorIDs to FormIDs) and whitelisted mods
         whitelistedItemBaseIDs.clear();
+        whitelistedModsList.clear();
         if (!sWhitelistedItems.empty()) {
             std::stringstream ss(sWhitelistedItems);
             std::string token;
             while (std::getline(ss, token, ',')) {
                 token = Trim(token);
                 if (!token.empty()) {
-                    auto itemForm = RE::TESForm::LookupByEditorID<RE::TESBoundObject>(token);
-                    if (itemForm) {
-                        whitelistedItemBaseIDs.push_back(itemForm->GetFormID());
+                    //check if it's a mod file
+                    std::string lowerToken = token;
+                    std::transform(lowerToken.begin(), lowerToken.end(), lowerToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                    if (lowerToken.find(".esp") != std::string::npos || lowerToken.find(".esm") != std::string::npos || lowerToken.find(".esl") != std::string::npos) {
+                        whitelistedModsList.push_back(lowerToken);
                     }
                     else {
-                        logs::warn("Item Whitelist: Could not find item with EditorID '{}'", token);
+                        auto itemForm = RE::TESForm::LookupByEditorID<RE::TESBoundObject>(token);
+                        if (itemForm) {
+                            whitelistedItemBaseIDs.push_back(itemForm->GetFormID());
+                        }
+                        else {
+                            logs::warn("Item Whitelist: Could not find item with EditorID '{}'", token);
+                        }
                     }
                 }
             }
@@ -334,8 +388,22 @@ namespace Settings
             file << "; Chance in percent (0.0 to 100.0) that an item gets hidden.\n";
             file << "fHideChance=" << fHideChance << "\n\n";
 
+            file << "; Set to true to use the specific chances below instead of the global fHideChance\n";
+            file << "bUseCategoryHideChances=" << (bUseCategoryHideChances ? "true" : "false") << "\n";
+            file << "fHideChanceArmor=" << fHideChanceArmor << "\n";
+            file << "fHideChanceWeapons=" << fHideChanceWeapons << "\n";
+            file << "fHideChanceClothing=" << fHideChanceClothing << "\n\n";
+
             file << "; Items with a gold value equal to or higher than this threshold will always be lootable.\n";
-            file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n\n";
+            file << "fValueThresholdForLoot=" << fValueThresholdForLoot << "\n\n";
+
+            file << "; Items with a Gold/Weight ratio equal to or higher than this will be lootable. 0 = disabled.\n";
+            file << "fValueWeightThresholdForLoot=" << fValueWeightThresholdForLoot << "\n\n";
+
+            file << "; Dynamic reduction of hide chance based on player skill (e.g. Heavy Armor skill protects heavy armors).\n";
+            file << "bEnableSkillScaling=" << (bEnableSkillScaling ? "true" : "false") << "\n";
+            file << "; Maximum percentage reduction applied when the corresponding skill is at 100.\n";
+            file << "fMaxSkillHideReduction=" << fMaxSkillHideReduction << "\n\n\n";
 
 
             file << "[CorpseFilters]\n";
@@ -352,9 +420,9 @@ namespace Settings
             file << "bIgnoreHealthExtraData=" << (bIgnoreHealthExtraData ? "true" : "false") << "\n\n\n";
 
 
-            file << "[Keywords]\n";
-            file << "; Comma-separated list of EditorIDs for keywords that should ALWAYS hide an item.\n";
-            file << "; Example: sHideKeywords=IsJunk, FollowerArrowKeyword\n";
+            file << "[Blacklist]\n";
+            file << "; Comma-separated list of EditorIDs for keywords or mod filenames that should ALWAYS hide an item.\n";
+            file << "; Example: sHideKeywords=IsJunk, FollowerArrowKeyword, MyMod.esp\n";
             file << "sHideKeywords=" << sHideKeywords << "\n\n\n";
 
 
@@ -364,8 +432,8 @@ namespace Settings
             file << "sExcludedNPCs=" << sExcludedNPCs << "\n\n\n";
 
 
-            file << "[ItemWhitelist]\n";
-            file << "; Comma-separated list of Item EditorIDs (e.g., IronSword, VendorItemRecipe). These items will NEVER be hidden, bypassing all other rules.\n";
+            file << "[Whitelist]\n";
+            file << "; Comma-separated list of Item EditorIDs (e.g., IronSword, VendorItemRecipe) or Mod filenames (e.g. MyMod.esp). These items will NEVER be hidden, bypassing all other rules.\n";
             file << "sWhitelistedItems=" << sWhitelistedItems << "\n\n\n";
 
 
@@ -423,7 +491,7 @@ namespace Settings
             file << "sMiscHideKeywords=" << sMiscHideKeywords << "\n\n";
 
             file << "; Chance in percent (0.0 to 100.0) that a blacklisted misc item gets hidden.\n";
-            file << "fMiscHideChance=" << fMiscHideChance << "\n";
+            file << "fMiscHideChance=" << fHideChanceMisc << "\n";
         }
     }
 }

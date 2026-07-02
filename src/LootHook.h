@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <unordered_map>
 #include <cstdarg>
+#include <string>
+#include <cctype>
 #include <string_view>
 #include <vector>
 
@@ -21,6 +23,7 @@
 #include <REL/Module.h>
 
 #include <RE/A/Actor.h>
+#include <RE/A/ActorValues.h>
 #include <RE/A/AlchemyItem.h>
 
 #include <RE/B/BSTEvent.h>
@@ -311,6 +314,23 @@ namespace LootHook
             return true;
         }
 
+        // Mod specific white- and blacklist checks
+        if (auto file = a_this->GetFile(0)) {
+            std::string modName(file->GetFilename());
+            std::transform(modName.begin(), modName.end(), modName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (!Settings::whitelistedModsList.empty()) {
+                if (std::find(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), modName) != Settings::whitelistedModsList.end()) {
+                    return true;
+                }
+            }
+            if (!Settings::blacklistedModsList.empty()) {
+                if (std::find(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), modName) != Settings::blacklistedModsList.end()) {
+                    return false;
+                }
+            }
+        }
+
 		// Item whitelist priority: If the item has any of the user-defined whitelist keywords, it should always be shown regardless of other settings
         if (!Settings::whitelistedItemBaseIDs.empty()) {
             auto itemFormID = a_this->GetFormID();
@@ -337,6 +357,9 @@ namespace LootHook
         bool shouldHide = false;
         bool requireWorn = true;
 
+        // variable for skill scaling
+		RE::ActorValue associatedSkill = RE::ActorValue::kNone;
+
         if (isClutter) {
             // Absolute safety nets for Misc Items - never hide Gold or Lockpicks
             auto formID = a_this->GetFormID();
@@ -352,7 +375,9 @@ namespace LootHook
             shouldHide = true;
             // Clutter items are never worn
             requireWorn = false;
-            currentHideChance = Settings::fMiscHideChance;
+            currentHideChance = Settings::fHideChanceMisc;
+
+            associatedSkill = RE::ActorValue::kPickpocket;
         }
         else {
             // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
@@ -369,6 +394,14 @@ namespace LootHook
 
             // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
             if (!isBackpack) {
+                // value/weight threshold
+                if (Settings::fValueWeightThresholdForLoot > 0.0f) {
+                    float weight = a_this->GetWeight();
+                    float valWeight = (weight > 0.0f) ? (a_this->GetGoldValue() / weight) : (a_this->GetGoldValue() > 0 ? 999999.0f : 0.0f);
+                    if (valWeight >= Settings::fValueWeightThresholdForLoot) return true;
+                }
+
+				// value threshold
                 if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
                 if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
             }
@@ -428,20 +461,50 @@ namespace LootHook
                         isArmor = true;
                     }
                 }
+                if (isShield) {
+                    associatedSkill = RE::ActorValue::kBlock;
+                }
+                else if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kLightArmor) {
+                    associatedSkill = RE::ActorValue::kLightArmor;
+                }
+                else if (armor->GetArmorType() == RE::BIPED_MODEL::ArmorType::kHeavyArmor) {
+                    associatedSkill = RE::ActorValue::kHeavyArmor;
+                }
+                else {
+					// If it's clothing or an unknown armor type, default to Pickpocket for skill scaling
+                    associatedSkill = RE::ActorValue::kPickpocket;
+                }
             }
 
             // Match item type to user settings
             if (isBackpack) {
                 shouldHide = Settings::bUnlootableBackpacks;
                 requireWorn = Settings::bBackpacksWornOnly;
+                associatedSkill = RE::ActorValue::kPickpocket;
             }
             else if (isWeapon) {
                 shouldHide = Settings::bUnlootableWeapons;
                 requireWorn = Settings::bWeaponsWornOnly;
+
+                auto weap = static_cast<RE::TESObjectWEAP*>(a_this);
+                switch (weap->GetWeaponType()) {
+                case RE::WEAPON_TYPE::kBow:
+                case RE::WEAPON_TYPE::kCrossbow:
+                    associatedSkill = RE::ActorValue::kArchery;
+                    break;
+                case RE::WEAPON_TYPE::kTwoHandAxe:
+                case RE::WEAPON_TYPE::kTwoHandSword:
+                    associatedSkill = RE::ActorValue::kTwoHanded;
+                    break;
+                default:
+                    associatedSkill = RE::ActorValue::kOneHanded;
+                    break;
+                }
             }
             else if (isAmmo) {
                 shouldHide = Settings::bUnlootableAmmo;
                 requireWorn = Settings::bAmmoWornOnly;
+                associatedSkill = RE::ActorValue::kPickpocket;
             }
             else if (isClothing) {
                 shouldHide = Settings::bUnlootableClothing;
@@ -470,6 +533,13 @@ namespace LootHook
                 }
                 // WornOnly applies to both shields and regular armor
                 requireWorn = Settings::bArmorWornOnly;
+            }
+
+            // category hide chances
+            if (Settings::bUseCategoryHideChances) {
+                if (isArmor || isShield) currentHideChance = Settings::fHideChanceArmor;
+                else if (isWeapon || isAmmo) currentHideChance = Settings::fHideChanceWeapons;
+                else if (isClothing || isJewelry || isBackpack) currentHideChance = Settings::fHideChanceClothing;
             }
         }
 
@@ -577,7 +647,7 @@ namespace LootHook
 
 		// Check if the player is currently sneaking
         bool isPlayerSneaking = false;
-        if (auto player = RE::PlayerCharacter::GetSingleton()) {
+        if (player) {
             isPlayerSneaking = player->IsSneaking();
         }
 
@@ -675,6 +745,15 @@ namespace LootHook
 
             // Safety: Never hide Quest Items, specifically whitelisted enchanted gear or player-modified items (e.g. via tempering or enchanting)
             if (isQuestObject || isExtraEnchanted || isPlayerModified)  return true;
+
+            // skill hide chance reduction
+            if (Settings::bEnableSkillScaling && isPlayerLoaded && currentHideChance > 0.0f && associatedSkill != RE::ActorValue::kNone) {
+                float skillLevel = player->GetActorValue(associatedSkill);
+                float reduction = (std::clamp(skillLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSkillHideReduction;
+                currentHideChance -= reduction;
+                if (currentHideChance < 0.0f) currentHideChance = 0.0f;
+            }
+            
 
             // Apply deterministic 'random' hiding based on the actor-item seed
             if (currentHideChance < 100.0f) {
