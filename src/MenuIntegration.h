@@ -6,9 +6,6 @@
 // ===== SKSE =====
 #include <SKSE/Logger.h>
 
-// ===== RE (Game Types) =====
-#include <REL/Module.h>
-
 // ===== Project =====
 #include "SKSEMenuFramework.h"
 #include "Settings.h"
@@ -76,6 +73,20 @@ namespace MenuIntegration
             ImGuiMCP::SliderFloat("Max Skill Reduction (%)", &Settings::fMaxSkillHideReduction, 0.0f, 100.0f, "%.1f");
             if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
             HelpMarker("The maximum percentage the hide chance is reduced when the corresponding skill is at level 100.");
+            ImGuiMCP::Unindent(15.0f);
+        }
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Hotkey Toggle");
+        if (ImGuiMCPComponents::ToggleButton("Enable Hotkey", &Settings::bEnableHotkey)) changed = true;
+        HelpMarker("Allows you to toggle the mod on/off in-game using a key combination. (Re-open the loot menu or look away and back at the corpse to refresh it).");
+
+        if (Settings::bEnableHotkey) {
+            ImGuiMCP::Indent(15.0f);
+            if (ImGuiMCP::InputInt("Toggle Key (DXScanCode)", &Settings::iToggleHotkey)) changed = true;
+            HelpMarker("DXScanCode for the main key. Default is 21 (Y).");
+            if (ImGuiMCP::InputInt("Modifier Key (DXScanCode)", &Settings::iToggleModifierKey)) changed = true;
+            HelpMarker("DXScanCode for the modifier key. Default is 56 (Left Alt).");
             ImGuiMCP::Unindent(15.0f);
         }
 

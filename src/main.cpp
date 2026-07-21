@@ -4,6 +4,7 @@
 #include <SKSE/Interfaces.h>
 
 // ===== RE (Game Types) =====
+#include <RE/B/BSInputDeviceManager.h>
 #include <RE/M/MenuOpenCloseEvent.h>
 #include <RE/S/ScriptEventSourceHolder.h>
 #include <RE/T/TESDeathEvent.h>
@@ -57,6 +58,13 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             if (ui) {
                 ui->AddEventSink<RE::MenuOpenCloseEvent>(LootHook::MenuTracker::GetSingleton());
                 logs::info("Menu event sink registered successfully.");
+            }
+
+            // Register hotkey listener
+            auto inputDeviceManager = RE::BSInputDeviceManager::GetSingleton();
+            if (inputDeviceManager) {
+                inputDeviceManager->AddEventSink(LootHook::InputListener::GetSingleton());
+                logs::info("Input event sink registered successfully.");
             }
 
 			// Register for death events after game data is loaded to ensure necessary forms are cached

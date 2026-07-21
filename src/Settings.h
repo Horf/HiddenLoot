@@ -35,6 +35,11 @@ namespace Settings
     inline float fValueThresholdForLoot = 1000.0f;
     inline float fValueWeightThresholdForLoot = 0.0f;
 
+    // Hotkey Toggle
+    inline bool bEnableHotkey = true;
+	inline int iToggleHotkey = 21;         // DXScanCode for 'Y'
+	inline int iToggleModifierKey = 56;    // DXScanCode for 'Left Alt'
+
     // Armor & Shields
     inline bool bUnlootableArmor = true;
     inline bool bUnlootableArmorShield = true;
@@ -268,13 +273,20 @@ namespace Settings
                     else if (key == "fMaxSkillHideReduction") {
                         fMaxSkillHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
                     }
+					else if (key == "bEnableHotkey") bEnableHotkey = isTrue;
+                    else if (key == "iToggleHotkey") {
+                        iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 21.0f));
+                    }
+                    else if (key == "iToggleModifierKey") {
+                        iToggleModifierKey = static_cast<int>(ParseFloatSafe(value, 56.0f));
+                    }
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
                 }
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 39) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 42) Save();
     }
 
     inline void LoadGameData() {
@@ -404,6 +416,13 @@ namespace Settings
             file << "bEnableSkillScaling=" << (bEnableSkillScaling ? "true" : "false") << "\n";
             file << "; Maximum percentage reduction applied when the corresponding skill is at 100.\n";
             file << "fMaxSkillHideReduction=" << fMaxSkillHideReduction << "\n\n\n";
+
+
+            file << "[Hotkey]\n";
+            file << "; Toggle the mod on/off in-game using a hotkey (Default: Left Alt + Y)\n";
+            file << "bEnableHotkey=" << (bEnableHotkey ? "true" : "false") << "\n";
+            file << "iToggleHotkey=" << iToggleHotkey << "\t; DXScanCode for 'Y'\n";
+            file << "iToggleModifierKey=" << iToggleModifierKey << "\t; DXScanCode for 'Left Alt'. Set to 0 to require no modifier.\n\n\n";
 
 
             file << "[CorpseFilters]\n";
