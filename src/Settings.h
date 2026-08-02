@@ -37,7 +37,7 @@ namespace Settings
 
     // Hotkey Toggle
     inline bool bEnableHotkey = true;
-	inline int iToggleHotkey = 21;         // DXScanCode for 'Y'
+	inline int iToggleHotkey = 45;         // DXScanCode for 'X'
 	inline int iToggleModifierKey = 56;    // DXScanCode for 'Left Alt'
 
     // Armor & Shields
@@ -275,7 +275,7 @@ namespace Settings
                     }
 					else if (key == "bEnableHotkey") bEnableHotkey = isTrue;
                     else if (key == "iToggleHotkey") {
-                        iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 21.0f));
+                        iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 45.0f));
                     }
                     else if (key == "iToggleModifierKey") {
                         iToggleModifierKey = static_cast<int>(ParseFloatSafe(value, 56.0f));
@@ -431,9 +431,9 @@ namespace Settings
 
 
             file << "[Hotkey]\n";
-            file << "; Toggle the mod on/off in-game using a hotkey (Default: Left Alt + Y)\n";
+            file << "; Toggle the mod on/off in-game using a hotkey (Default: Left Alt + X)\n";
             file << "bEnableHotkey=" << (bEnableHotkey ? "true" : "false") << "\n";
-            file << "iToggleHotkey=" << iToggleHotkey << "\t; DXScanCode for 'Y'\n";
+            file << "iToggleHotkey=" << iToggleHotkey << "\t; DXScanCode for 'X'\n";
             file << "iToggleModifierKey=" << iToggleModifierKey << "\t; DXScanCode for 'Left Alt'. Set to 0 to require no modifier.\n\n\n";
 
 

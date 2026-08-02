@@ -163,11 +163,12 @@ namespace LootHook
 
                         // Track modifier key state
                         if (key == Settings::iToggleModifierKey) {
-                            _modifierHeld = button->IsPressed();
+                            _modifierHeld = (button->Value() > 0.0f);
                         }
                         // Check for main hotkey press
                         else if (key == Settings::iToggleHotkey && button->IsDown()) {
-                            if (_modifierHeld) {
+                            bool modifierConditionMet = (Settings::iToggleModifierKey == 0) || _modifierHeld;
+                            if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
                                 auto console = RE::ConsoleLog::GetSingleton();
                                 if (console) {
@@ -369,7 +370,23 @@ namespace LootHook
             return true;
         }
 
-        // Mod specific white- and blacklist checks
+        // Absolute safety nets for Misc Items - never hide Gold or Lockpicks
+        auto formID = a_this->GetFormID();
+        if (formID == 0x0000000F || formID == 0x0000000A) return true;
+
+        // Never hide Gems
+        auto kwForm = a_this->As<RE::BGSKeywordForm>();
+        if (kwForm && kwForm->HasKeywordString("VendorItemGem")) return true;
+
+        // Item whitelist priority: If the item has any of the user-defined whitelist keywords, it should always be shown regardless of other settings
+        if (!Settings::whitelistedItemBaseIDs.empty()) {
+            auto itemFormID = a_this->GetFormID();
+            if (std::binary_search(Settings::whitelistedItemBaseIDs.begin(), Settings::whitelistedItemBaseIDs.end(), itemFormID)) {
+                return true;
+            }
+        }
+
+        // Mod specific whitelist checks
         if (auto file = a_this->GetFile(0)) {
             std::string modName(file->GetFilename());
             std::transform(modName.begin(), modName.end(), modName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -378,19 +395,6 @@ namespace LootHook
                 if (std::find(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), modName) != Settings::whitelistedModsList.end()) {
                     return true;
                 }
-            }
-            if (!Settings::blacklistedModsList.empty()) {
-                if (std::find(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), modName) != Settings::blacklistedModsList.end()) {
-                    return false;
-                }
-            }
-        }
-
-		// Item whitelist priority: If the item has any of the user-defined whitelist keywords, it should always be shown regardless of other settings
-        if (!Settings::whitelistedItemBaseIDs.empty()) {
-            auto itemFormID = a_this->GetFormID();
-            if (std::binary_search(Settings::whitelistedItemBaseIDs.begin(), Settings::whitelistedItemBaseIDs.end(), itemFormID)) {
-                return true;
             }
         }
 
@@ -415,15 +419,28 @@ namespace LootHook
         // variable for skill scaling
 		RE::ActorValue associatedSkill = RE::ActorValue::kNone;
 
-        if (isClutter) {
-            // Absolute safety nets for Misc Items - never hide Gold or Lockpicks
-            auto formID = a_this->GetFormID();
-            if (formID == 0x0000000F || formID == 0x0000000A) return true;
+        // Check Blacklists first
+        bool isBlacklisted = false;
+        if (auto file = a_this->GetFile(0)) {
+            std::string modName(file->GetFilename());
+            std::transform(modName.begin(), modName.end(), modName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (std::find(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), modName) != Settings::blacklistedModsList.end()) {
+                isBlacklisted = true;
+            }
+        }
+        if (!isBlacklisted && HasKeywordFromList(Settings::hideKeywordsList)) {
+            isBlacklisted = true;
+        }
 
-            // Never hide Gems
-            auto kwForm = a_this->As<RE::BGSKeywordForm>();
-            if (kwForm && kwForm->HasKeywordString("VendorItemGem")) return true;
+        // Apply logic based on item type
+        if (isBlacklisted) {
+            shouldHide = true;
+            requireWorn = false;
 
+            // Force hide regardless of sliders
+            currentHideChance = 100.0f;
+        }
+        else if (isClutter) {
             // If the misc item isn't specifically blacklisted, show it
             if (!HasKeywordFromList(Settings::miscHideKeywordsList)) return true;
 
@@ -435,9 +452,6 @@ namespace LootHook
             associatedSkill = RE::ActorValue::kPickpocket;
         }
         else {
-            // Keyword blacklist: If the item has any of the user-defined blacklist keywords, it should be hidden
-            if (HasKeywordFromList(Settings::hideKeywordsList)) return false;
-
             // Special handling for backpacks - armor/clothing with ModBack slot (47)
             bool isBackpack = false;
             if (a_this->IsArmor()) {

@@ -84,7 +84,7 @@ namespace MenuIntegration
         if (Settings::bEnableHotkey) {
             ImGuiMCP::Indent(15.0f);
             if (ImGuiMCP::InputInt("Toggle Key (DXScanCode)", &Settings::iToggleHotkey)) changed = true;
-            HelpMarker("DXScanCode for the main key. Default is 21 (Y).");
+            HelpMarker("DXScanCode for the main key. Default is 45 (X).");
             if (ImGuiMCP::InputInt("Modifier Key (DXScanCode)", &Settings::iToggleModifierKey)) changed = true;
             HelpMarker("DXScanCode for the modifier key. Default is 56 (Left Alt).");
             ImGuiMCP::Unindent(15.0f);
@@ -107,7 +107,7 @@ namespace MenuIntegration
         HelpMarker("Enable this manually if you use a Durability/Degradation mod that isn't automatically detected. It prevents the mod from thinking all degraded items are tempered player-gear.");
 
         ImGuiMCP::Spacing();
-        ImGuiMCP::SeparatorText("Keyword Filters");
+        ImGuiMCP::SeparatorText("Blacklist");
         static char keywordBuffer[256];
         if (keywordBuffer[0] == '\0' && !Settings::sHideKeywords.empty()) {
             strncpy_s(keywordBuffer, Settings::sHideKeywords.c_str(), sizeof(keywordBuffer) - 1);
@@ -137,7 +137,7 @@ namespace MenuIntegration
         HelpMarker("Comma-separated list of NPC EditorIDs (e.g., Ulfric, Tullius). Items on these specific NPCs will NEVER be hidden. Case-sensitive! Gunjar is permanently protected.");
 
         ImGuiMCP::Spacing();
-        ImGuiMCP::SeparatorText("Item Whitelist");
+        ImGuiMCP::SeparatorText("Whitelist");
         static char itemBuffer[256];
         if (itemBuffer[0] == '\0' && !Settings::sWhitelistedItems.empty()) {
             strncpy_s(itemBuffer, Settings::sWhitelistedItems.c_str(), sizeof(itemBuffer) - 1);
