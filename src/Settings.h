@@ -329,6 +329,18 @@ namespace Settings
         // Hardcoded safety net: Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
         excludedNPCBaseIDs.push_back(0x0009B0AD);
 
+        // Guards from CC Alternative Armors - Steel Soldier
+        if (auto dataHandler = RE::TESDataHandler::GetSingleton()) {
+            // Guard 1
+            if (auto ccGuard1 = dataHandler->LookupForm<RE::TESNPC>(0x81F, "ccbgssse058-ba_steel.esl")) {
+                excludedNPCBaseIDs.push_back(ccGuard1->GetFormID());
+            }
+            // Guard 2
+            if (auto ccGuard2 = dataHandler->LookupForm<RE::TESNPC>(0x820, "ccbgssse058-ba_steel.esl")) {
+                excludedNPCBaseIDs.push_back(ccGuard2->GetFormID());
+            }
+        }
+
         // Parse user defined EditorIDs
         if (!sExcludedNPCs.empty()) {
             std::stringstream ss(sExcludedNPCs);
