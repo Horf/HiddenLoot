@@ -162,11 +162,11 @@ namespace LootHook
                         auto key = button->GetIDCode();
 
                         // Track modifier key state
-                        if (key == Settings::iToggleModifierKey) {
+                        if (key == static_cast<uint32_t>(Settings::iToggleModifierKey)) {
                             _modifierHeld = (button->Value() > 0.0f);
                         }
                         // Check for main hotkey press
-                        else if (key == Settings::iToggleHotkey && button->IsDown()) {
+                        else if (key == static_cast<uint32_t>(Settings::iToggleModifierKey) && button->IsDown()) {
                             bool modifierConditionMet = (Settings::iToggleModifierKey == 0) || _modifierHeld;
                             if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
@@ -630,8 +630,8 @@ namespace LootHook
 
         if (actor) {
             // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
-            auto formID = baseObj->GetFormID();
-            if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), formID) != Settings::excludedNPCBaseIDs.end()) {
+            auto npcBaseID = baseObj->GetFormID();
+            if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID) != Settings::excludedNPCBaseIDs.end()) {
                 return true;
             }
 

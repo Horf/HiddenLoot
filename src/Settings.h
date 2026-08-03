@@ -330,7 +330,7 @@ namespace Settings
         excludedNPCBaseIDs.push_back(0x0009B0AD);
 
         // Guards from CC Alternative Armors - Steel Soldier
-        if (auto dataHandler = RE::TESDataHandler::GetSingleton()) {
+        if (dataHandler) {
             // Guard 1
             if (auto ccGuard1 = dataHandler->LookupForm<RE::TESNPC>(0x81F, "ccbgssse058-ba_steel.esl")) {
                 excludedNPCBaseIDs.push_back(ccGuard1->GetFormID());
