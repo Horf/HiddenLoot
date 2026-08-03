@@ -86,7 +86,7 @@ namespace MenuIntegration
             if (ImGuiMCP::InputInt("Toggle Key (DXScanCode)", &Settings::iToggleHotkey)) changed = true;
             HelpMarker("DXScanCode for the main key. Default is 45 (X).");
             if (ImGuiMCP::InputInt("Modifier Key (DXScanCode)", &Settings::iToggleModifierKey)) changed = true;
-            HelpMarker("DXScanCode for the modifier key. Default is 56 (Left Alt).");
+            HelpMarker("DXScanCode for the modifier key. Default is 56 (Left Alt). Set to 0 to require no modifier key.");
             ImGuiMCP::Unindent(15.0f);
         }
 
