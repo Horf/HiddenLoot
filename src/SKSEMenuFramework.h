@@ -62,8 +62,8 @@ namespace SKSEMenuFramework {
 
         class WindowInterface {
         public:
-            std::atomic<bool> IsOpen{false};
-            std::atomic<bool> BlockUserInput{true};
+            std::atomic<bool> IsOpen{ false };
+            std::atomic<bool> BlockUserInput{ true };
         };
         typedef void(__stdcall* RenderFunction)();
         typedef bool(__stdcall* InputEventCallback)(RE::InputEvent*);
@@ -71,28 +71,31 @@ namespace SKSEMenuFramework {
 
         typedef void(__stdcall* EventCallback)(EventType eventType);
 
-        using RegisterEventFuction = int64_t (*)(EventCallback callback, float priority);
+        using RegisterEventFuction = int64_t(*)(EventCallback callback, float priority);
         using UnregisterEventFuction = void (*)(int64_t id);
 
         using ActionFunction = void (*)();
+        using PushFontFunction = void (*)(const char* name);
         using AddWindowFunction = Model::WindowInterface* (*)(RenderFunction);
         using AddWindowWithViewFunction = Model::WindowInterface* (*)(RenderFunction, const char*);
         using GetMainWindowFunction = Model::WindowInterface* (*)();
         using AddSectionItemFunction = void (*)(const char* path, RenderFunction rendererFunction);
 
-        using RegisterInputEventFuction = int64_t (*)(InputEventCallback callback);
+        using RegisterInputEventFuction = int64_t(*)(InputEventCallback callback);
         using UnregisterInputEventFuction = void (*)(uint64_t id);
 
-        using RegisterHudElementFuction = int64_t (*)(HudElementCallback callback);
+        using RegisterHudElementFuction = int64_t(*)(HudElementCallback callback);
         using UnregisterHudElementFuction = void (*)(uint64_t id);
         using IsAnyBlockingWindowOpenedFuction = bool (*)();
         using SetWindowsPauseGameFuction = void (*)(bool pause);
-        using LoadTextureFuction = ImGuiMCP::ImTextureID (*)(const char* texturePath, ImGuiMCP::ImVec2* size);
+        using LoadTextureFuction = ImGuiMCP::ImTextureID(*)(const char* texturePath, ImGuiMCP::ImVec2* size);
         using DisposeTextureFuction = void (*)(const char* texturePath);
         using GetMenuFrameworkVersionFunction = float (*)();
+        using SetHotkeyEnabledFunction = void (*)(bool enabled);
+        using IsHotkeyEnabledFunction = bool (*)();
 
         class InputEvent {
-            uint64_t id = 0;
+            uint64_t id;
 
         public:
             InputEvent(InputEventCallback callback) {
@@ -110,7 +113,7 @@ namespace SKSEMenuFramework {
         };
 
         class Event {
-            int64_t id = 0;
+            int64_t id;
 
         public:
             Event(EventCallback callback, float priority) {
@@ -128,7 +131,7 @@ namespace SKSEMenuFramework {
         };
 
         class HudElement {
-            uint64_t id = 0;
+            uint64_t id;
 
         public:
             HudElement(HudElementCallback callback) {
@@ -180,6 +183,16 @@ namespace SKSEMenuFramework {
         }
         return nullptr;
     }
+    inline void SetHotkeyEnabled(bool enabled) {
+        static auto func = Model::Internal::GetFunction<Model::SetHotkeyEnabledFunction>("SetHotkeyEnabled");
+        if (func) {
+            func(enabled);
+        }
+    }
+    inline bool IsHotkeyEnabled() {
+        static auto func = Model::Internal::GetFunction<Model::IsHotkeyEnabledFunction>("IsHotkeyEnabled");
+        return func ? func() : false;
+    }
     inline Model::InputEvent* AddInputEvent(Model::InputEventCallback callback) { return new Model::InputEvent(callback); }
     inline Model::HudElement* AddHudElement(Model::HudElementCallback callback) { return new Model::HudElement(callback); }
 
@@ -207,7 +220,7 @@ namespace SKSEMenuFramework {
         return false;
     }
 
-    inline ImGuiMCP::ImTextureID LoadTexture(std::string texturePath, ImGuiMCP::ImVec2 size = {0, 0}) {
+    inline ImGuiMCP::ImTextureID LoadTexture(std::string texturePath, ImGuiMCP::ImVec2 size = { 0, 0 }) {
         static auto func = Model::Internal::GetFunction<Model::LoadTextureFuction>("LoadTexture");
         if (func) {
             return func(texturePath.c_str(), &size);
@@ -221,6 +234,13 @@ namespace SKSEMenuFramework {
             return func(texturePath.c_str());
         }
         return;
+    }
+
+    inline void PushFont(std::string name) {
+        static auto func = Model::Internal::GetFunction<Model::PushFontFunction>("PushFont");
+        if (func) {
+            func(name.c_str());
+        }
     }
 
     inline void SetSection(std::string key) { Model::Internal::key = key; }
@@ -261,19 +281,19 @@ namespace FontAwesome {
 
 namespace ImGuiMCP {
 #ifndef IM_COL32_R_SHIFT
-    #ifdef IMGUI_USE_BGRA_PACKED_COLOR
-        #define IM_COL32_R_SHIFT 16
-        #define IM_COL32_G_SHIFT 8
-        #define IM_COL32_B_SHIFT 0
-        #define IM_COL32_A_SHIFT 24
-        #define IM_COL32_A_MASK 0xFF000000
-    #else
-        #define IM_COL32_R_SHIFT 0
-        #define IM_COL32_G_SHIFT 8
-        #define IM_COL32_B_SHIFT 16
-        #define IM_COL32_A_SHIFT 24
-        #define IM_COL32_A_MASK 0xFF000000
-    #endif
+#ifdef IMGUI_USE_BGRA_PACKED_COLOR
+#define IM_COL32_R_SHIFT 16
+#define IM_COL32_G_SHIFT 8
+#define IM_COL32_B_SHIFT 0
+#define IM_COL32_A_SHIFT 24
+#define IM_COL32_A_MASK 0xFF000000
+#else
+#define IM_COL32_R_SHIFT 0
+#define IM_COL32_G_SHIFT 8
+#define IM_COL32_B_SHIFT 16
+#define IM_COL32_A_SHIFT 24
+#define IM_COL32_A_MASK 0xFF000000
+#endif
 #endif
 #define IM_COL32(R, G, B, A) \
     (((ImGuiMCP::ImU32)(A) << IM_COL32_A_SHIFT) | ((ImGuiMCP::ImU32)(B) << IM_COL32_B_SHIFT) | ((ImGuiMCP::ImU32)(G) << IM_COL32_G_SHIFT) | ((ImGuiMCP::ImU32)(R) << IM_COL32_R_SHIFT))
@@ -1381,7 +1401,7 @@ namespace ImGuiMCP {
         };
         Data* data;
         static inline Data* Create(const char* default_filter) {
-            using func_t = Data* (*)(const char*);
+            using func_t = Data * (*)(const char*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTextFilter_ImGuiTextFilter");
             return func(default_filter);
         }
@@ -1774,9 +1794,9 @@ namespace ImGuiMCP {
         void (*Platform_DestroyWindow)(ImGuiViewport* vp);
         void (*Platform_ShowWindow)(ImGuiViewport* vp);
         void (*Platform_SetWindowPos)(ImGuiViewport* vp, ImVec2 pos);
-        ImVec2 (*Platform_GetWindowPos)(ImGuiViewport* vp);
+        ImVec2(*Platform_GetWindowPos)(ImGuiViewport* vp);
         void (*Platform_SetWindowSize)(ImGuiViewport* vp, ImVec2 size);
-        ImVec2 (*Platform_GetWindowSize)(ImGuiViewport* vp);
+        ImVec2(*Platform_GetWindowSize)(ImGuiViewport* vp);
         void (*Platform_SetWindowFocus)(ImGuiViewport* vp);
         bool (*Platform_GetWindowFocus)(ImGuiViewport* vp);
         bool (*Platform_GetWindowMinimized)(ImGuiViewport* vp);
@@ -2007,11 +2027,11 @@ namespace ImGuiMCP {
     typedef enum {
         ImGuiHoveredFlags_DelayMask_ = ImGuiHoveredFlags_DelayNone | ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_NoSharedDelay,
         ImGuiHoveredFlags_AllowedMaskForIsWindowHovered = ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_RootWindow | ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_NoPopupHierarchy |
-                                                          ImGuiHoveredFlags_DockHierarchy | ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
-                                                          ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary,
+        ImGuiHoveredFlags_DockHierarchy | ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+        ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary,
         ImGuiHoveredFlags_AllowedMaskForIsItemHovered = ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem | ImGuiHoveredFlags_AllowWhenOverlapped |
-                                                        ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_NoNavOverride | ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary |
-                                                        ImGuiHoveredFlags_DelayMask_,
+        ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_NoNavOverride | ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_Stationary |
+        ImGuiHoveredFlags_DelayMask_,
     } ImGuiHoveredFlagsPrivate_;
     typedef enum {
         ImGuiInputTextFlags_Multiline = 1 << 26,
@@ -2038,7 +2058,7 @@ namespace ImGuiMCP {
         ImGuiButtonFlags_NoSetKeyOwner = 1 << 20,
         ImGuiButtonFlags_NoTestKeyOwner = 1 << 21,
         ImGuiButtonFlags_PressedOnMask_ = ImGuiButtonFlags_PressedOnClick | ImGuiButtonFlags_PressedOnClickRelease | ImGuiButtonFlags_PressedOnClickReleaseAnywhere |
-                                          ImGuiButtonFlags_PressedOnRelease | ImGuiButtonFlags_PressedOnDoubleClick | ImGuiButtonFlags_PressedOnDragDropHold,
+        ImGuiButtonFlags_PressedOnRelease | ImGuiButtonFlags_PressedOnDoubleClick | ImGuiButtonFlags_PressedOnDragDropHold,
         ImGuiButtonFlags_PressedOnDefault_ = ImGuiButtonFlags_PressedOnClickRelease,
     } ImGuiButtonFlagsPrivate_;
     typedef enum {
@@ -2399,7 +2419,7 @@ namespace ImGuiMCP {
         ImGuiInputFlags_CondDefault_ = ImGuiInputFlags_CondHovered | ImGuiInputFlags_CondActive,
         ImGuiInputFlags_RepeatRateMask_ = ImGuiInputFlags_RepeatRateDefault | ImGuiInputFlags_RepeatRateNavMove | ImGuiInputFlags_RepeatRateNavTweak,
         ImGuiInputFlags_RepeatUntilMask_ =
-            ImGuiInputFlags_RepeatUntilRelease | ImGuiInputFlags_RepeatUntilKeyModsChange | ImGuiInputFlags_RepeatUntilKeyModsChangeFromNone | ImGuiInputFlags_RepeatUntilOtherKeyPress,
+        ImGuiInputFlags_RepeatUntilRelease | ImGuiInputFlags_RepeatUntilKeyModsChange | ImGuiInputFlags_RepeatUntilKeyModsChangeFromNone | ImGuiInputFlags_RepeatUntilOtherKeyPress,
         ImGuiInputFlags_RepeatMask_ = ImGuiInputFlags_Repeat | ImGuiInputFlags_RepeatRateMask_ | ImGuiInputFlags_RepeatUntilMask_,
         ImGuiInputFlags_CondMask_ = ImGuiInputFlags_CondHovered | ImGuiInputFlags_CondActive,
         ImGuiInputFlags_RouteTypeMask_ = ImGuiInputFlags_RouteActive | ImGuiInputFlags_RouteFocused | ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteAlways,
@@ -2569,13 +2589,13 @@ namespace ImGuiMCP {
         ImGuiDockNodeFlags_NoDockingOverOther = 1 << 21,
         ImGuiDockNodeFlags_NoDockingOverEmpty = 1 << 22,
         ImGuiDockNodeFlags_NoDocking = ImGuiDockNodeFlags_NoDockingOverMe | ImGuiDockNodeFlags_NoDockingOverOther | ImGuiDockNodeFlags_NoDockingOverEmpty | ImGuiDockNodeFlags_NoDockingSplit |
-                                       ImGuiDockNodeFlags_NoDockingSplitOther,
+        ImGuiDockNodeFlags_NoDockingSplitOther,
         ImGuiDockNodeFlags_SharedFlagsInheritMask_ = ~0,
         ImGuiDockNodeFlags_NoResizeFlagsMask_ = ImGuiDockNodeFlags_NoResize | ImGuiDockNodeFlags_NoResizeX | ImGuiDockNodeFlags_NoResizeY,
         ImGuiDockNodeFlags_LocalFlagsTransferMask_ = ImGuiDockNodeFlags_NoDockingSplit | ImGuiDockNodeFlags_NoResizeFlagsMask_ | ImGuiDockNodeFlags_AutoHideTabBar | ImGuiDockNodeFlags_CentralNode |
-                                                     ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton,
+        ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton,
         ImGuiDockNodeFlags_SavedFlagsMask_ = ImGuiDockNodeFlags_NoResizeFlagsMask_ | ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_CentralNode | ImGuiDockNodeFlags_NoTabBar |
-                                             ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton,
+        ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton,
     } ImGuiDockNodeFlagsPrivate_;
     typedef enum {
         ImGuiDataAuthority_Auto,
@@ -2749,8 +2769,8 @@ namespace ImGuiMCP {
         ImGuiDebugLogFlags_EventDocking = 1 << 8,
         ImGuiDebugLogFlags_EventViewport = 1 << 9,
         ImGuiDebugLogFlags_EventMask_ = ImGuiDebugLogFlags_EventActiveId | ImGuiDebugLogFlags_EventFocus | ImGuiDebugLogFlags_EventPopup | ImGuiDebugLogFlags_EventNav |
-                                        ImGuiDebugLogFlags_EventClipper | ImGuiDebugLogFlags_EventSelection | ImGuiDebugLogFlags_EventIO | ImGuiDebugLogFlags_EventInputRouting |
-                                        ImGuiDebugLogFlags_EventDocking | ImGuiDebugLogFlags_EventViewport,
+        ImGuiDebugLogFlags_EventClipper | ImGuiDebugLogFlags_EventSelection | ImGuiDebugLogFlags_EventIO | ImGuiDebugLogFlags_EventInputRouting |
+        ImGuiDebugLogFlags_EventDocking | ImGuiDebugLogFlags_EventViewport,
         ImGuiDebugLogFlags_OutputToTTY = 1 << 20,
         ImGuiDebugLogFlags_OutputToTestEngine = 1 << 21,
     } ImGuiDebugLogFlags_;
@@ -3744,7 +3764,7 @@ namespace ImGuiMCP {
     namespace ImVec2Manager {
 
         inline ImVec2* Create(void) {
-            using func_t = ImVec2* (*)();
+            using func_t = ImVec2 * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec2_ImVec2_Nil");
             return func();
         }
@@ -3754,14 +3774,14 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImVec2* Create(float _x, float _y) {
-            using func_t = ImVec2* (*)(float, float);
+            using func_t = ImVec2 * (*)(float, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec2_ImVec2_Float");
             return func(_x, _y);
         }
     }
     namespace ImVec4Manager {
         inline ImVec4* Create(void) {
-            using func_t = ImVec4* (*)();
+            using func_t = ImVec4 * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec4_ImVec4_Nil");
             return func();
         }
@@ -3771,14 +3791,14 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImVec4* Create(float _x, float _y, float _z, float _w) {
-            using func_t = ImVec4* (*)(float, float, float, float);
+            using func_t = ImVec4 * (*)(float, float, float, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec4_ImVec4_Float");
             return func(_x, _y, _z, _w);
         }
     }
 
     inline ImGuiContext* CreateContext(ImFontAtlas* shared_font_atlas = NULL) {
-        using func_t = ImGuiContext* (*)(ImFontAtlas*);
+        using func_t = ImGuiContext * (*)(ImFontAtlas*);
         func_t func = GetMenuFrameworkFunction<func_t>("igCreateContext");
         return func(shared_font_atlas);
     }
@@ -3788,7 +3808,7 @@ namespace ImGuiMCP {
         return func(ctx);
     }
     inline ImGuiContext* GetCurrentContext() {
-        using func_t = ImGuiContext* (*)();
+        using func_t = ImGuiContext * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentContext");
         return func();
     }
@@ -3798,12 +3818,12 @@ namespace ImGuiMCP {
         return func(ctx);
     }
     inline ImGuiIO* GetIO() {
-        using func_t = ImGuiIO* (*)();
+        using func_t = ImGuiIO * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetIO");
         return func();
     }
     inline ImGuiStyle* GetStyle() {
-        using func_t = ImGuiStyle* (*)();
+        using func_t = ImGuiStyle * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetStyle");
         return func();
     }
@@ -3823,7 +3843,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImDrawData* GetDrawData() {
-        using func_t = ImDrawData* (*)();
+        using func_t = ImDrawData * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetDrawData");
         return func();
     }
@@ -3938,7 +3958,7 @@ namespace ImGuiMCP {
         return func(flags);
     }
     inline ImDrawList* GetWindowDrawList() {
-        using func_t = ImDrawList* (*)();
+        using func_t = ImDrawList * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowDrawList");
         return func();
     }
@@ -3972,7 +3992,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiViewport* GetWindowViewport() {
-        using func_t = ImGuiViewport* (*)();
+        using func_t = ImGuiViewport * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowViewport");
         return func();
     }
@@ -4235,7 +4255,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImFont* GetFont() {
-        using func_t = ImFont* (*)();
+        using func_t = ImFont * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetFont");
         return func();
     }
@@ -4252,17 +4272,17 @@ namespace ImGuiMCP {
         return out;
     }
     inline ImU32 GetColorU32(ImGuiCol idx, float alpha_mul = 1.0f) {
-        using func_t = ImU32 (*)(ImGuiCol, float);
+        using func_t = ImU32(*)(ImGuiCol, float);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetColorU32_Col");
         return func(idx, alpha_mul);
     }
     inline ImU32 GetColorU32(const ImVec4 col) {
-        using func_t = ImU32 (*)(const ImVec4);
+        using func_t = ImU32(*)(const ImVec4);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetColorU32_Vec4");
         return func(col);
     }
     inline ImU32 GetColorU32(ImU32 col, float alpha_mul = 1.0f) {
-        using func_t = ImU32 (*)(ImU32, float);
+        using func_t = ImU32(*)(ImU32, float);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetColorU32_U32");
         return func(col, alpha_mul);
     }
@@ -4418,17 +4438,17 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID GetID(const char* str_id) {
-        using func_t = ImGuiID (*)(const char*);
+        using func_t = ImGuiID(*)(const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetID_Str");
         return func(str_id);
     }
     inline ImGuiID GetID(const char* str_id_begin, const char* str_id_end) {
-        using func_t = ImGuiID (*)(const char*, const char*);
+        using func_t = ImGuiID(*)(const char*, const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetID_StrStr");
         return func(str_id_begin, str_id_end);
     }
     inline ImGuiID GetID(const void* ptr_id) {
-        using func_t = ImGuiID (*)(const void*);
+        using func_t = ImGuiID(*)(const void*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetID_Ptr");
         return func(ptr_id);
     }
@@ -4576,13 +4596,13 @@ namespace ImGuiMCP {
         return func();
     }
     inline void Image(ImTextureID user_texture_id, const ImVec2 image_size, const ImVec2 uv0 = ImVec2(0, 0), const ImVec2 uv1 = ImVec2(1, 1), const ImVec4 tint_col = ImVec4(1, 1, 1, 1),
-                      const ImVec4 border_col = ImVec4(0, 0, 0, 0)) {
+        const ImVec4 border_col = ImVec4(0, 0, 0, 0)) {
         using func_t = void (*)(ImTextureID, const ImVec2, const ImVec2, const ImVec2, const ImVec4, const ImVec4);
         func_t func = GetMenuFrameworkFunction<func_t>("igImage");
         return func(user_texture_id, image_size, uv0, uv1, tint_col, border_col);
     }
     inline bool ImageButton(const char* str_id, ImTextureID user_texture_id, const ImVec2 image_size, const ImVec2 uv0 = ImVec2(0, 0), const ImVec2 uv1 = ImVec2(1, 1),
-                            const ImVec4 bg_col = ImVec4(0, 0, 0, 0), const ImVec4 tint_col = ImVec4(1, 1, 1, 1)) {
+        const ImVec4 bg_col = ImVec4(0, 0, 0, 0), const ImVec4 tint_col = ImVec4(1, 1, 1, 1)) {
         using func_t = bool (*)(const char*, ImTextureID, const ImVec2, const ImVec2, const ImVec2, const ImVec4, const ImVec4);
         func_t func = GetMenuFrameworkFunction<func_t>("igImageButton");
         return func(str_id, user_texture_id, image_size, uv0, uv1, bg_col, tint_col);
@@ -4598,7 +4618,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline bool Combo(const char* label, int* current_item, const char* const items[], int items_count, int popup_max_height_in_items = -1) {
-        using func_t = bool (*)(const char*, int*, const char* const[], int, int);
+        using func_t = bool (*)(const char*, int*, const char* const [], int, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igCombo_Str_arr");
         return func(label, current_item, items, items_count, popup_max_height_in_items);
     }
@@ -4633,7 +4653,7 @@ namespace ImGuiMCP {
         return func(label, v, v_speed, v_min, v_max, format, flags);
     }
     inline bool DragFloatRange2(const char* label, float* v_current_min, float* v_current_max, float v_speed = 1.0f, float v_min = 0.0f, float v_max = 0.0f, const char* format = "%.3f",
-                                const char* format_max = NULL, ImGuiSliderFlags flags = 0) {
+        const char* format_max = NULL, ImGuiSliderFlags flags = 0) {
         using func_t = bool (*)(const char*, float*, float*, float, float, float, const char*, const char*, ImGuiSliderFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igDragFloatRange2");
         return func(label, v_current_min, v_current_max, v_speed, v_min, v_max, format, format_max, flags);
@@ -4659,19 +4679,19 @@ namespace ImGuiMCP {
         return func(label, v, v_speed, v_min, v_max, format, flags);
     }
     inline bool DragIntRange2(const char* label, int* v_current_min, int* v_current_max, float v_speed = 1.0f, int v_min = 0, int v_max = 0, const char* format = "%d", const char* format_max = NULL,
-                              ImGuiSliderFlags flags = 0) {
+        ImGuiSliderFlags flags = 0) {
         using func_t = bool (*)(const char*, int*, int*, float, int, int, const char*, const char*, ImGuiSliderFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igDragIntRange2");
         return func(label, v_current_min, v_current_max, v_speed, v_min, v_max, format, format_max, flags);
     }
     inline bool DragScalar(const char* label, ImGuiDataType data_type, void* p_data, float v_speed = 1.0f, const void* p_min = NULL, const void* p_max = NULL, const char* format = NULL,
-                           ImGuiSliderFlags flags = 0) {
+        ImGuiSliderFlags flags = 0) {
         using func_t = bool (*)(const char*, ImGuiDataType, void*, float, const void*, const void*, const char*, ImGuiSliderFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igDragScalar");
         return func(label, data_type, p_data, v_speed, p_min, p_max, format, flags);
     }
     inline bool DragScalarN(const char* label, ImGuiDataType data_type, void* p_data, int components, float v_speed = 1.0f, const void* p_min = NULL, const void* p_max = NULL,
-                            const char* format = NULL, ImGuiSliderFlags flags = 0) {
+        const char* format = NULL, ImGuiSliderFlags flags = 0) {
         using func_t = bool (*)(const char*, ImGuiDataType, void*, int, float, const void*, const void*, const char*, ImGuiSliderFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igDragScalarN");
         return func(label, data_type, p_data, components, v_speed, p_min, p_max, format, flags);
@@ -4742,7 +4762,7 @@ namespace ImGuiMCP {
         return func(label, size, v, v_min, v_max, format, flags);
     }
     inline bool VSliderScalar(const char* label, const ImVec2 size, ImGuiDataType data_type, void* p_data, const void* p_min, const void* p_max, const char* format = NULL,
-                              ImGuiSliderFlags flags = 0) {
+        ImGuiSliderFlags flags = 0) {
         using func_t = bool (*)(const char*, const ImVec2, ImGuiDataType, void*, const void*, const void*, const char*, ImGuiSliderFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igVSliderScalar");
         return func(label, size, data_type, p_data, p_min, p_max, format, flags);
@@ -4753,7 +4773,7 @@ namespace ImGuiMCP {
         return func(label, buf, buf_size, flags, callback, user_data);
     }
     inline bool InputTextMultiline(const char* label, char* buf, size_t buf_size, const ImVec2 size = ImVec2(0, 0), ImGuiInputTextFlags flags = 0, ImGuiInputTextCallback callback = NULL,
-                                   void* user_data = NULL) {
+        void* user_data = NULL) {
         using func_t = bool (*)(const char*, char*, size_t, const ImVec2, ImGuiInputTextFlags, ImGuiInputTextCallback, void*);
         func_t func = GetMenuFrameworkFunction<func_t>("igInputTextMultiline");
         return func(label, buf, buf_size, size, flags, callback, user_data);
@@ -4809,13 +4829,13 @@ namespace ImGuiMCP {
         return func(label, v, step, step_fast, format, flags);
     }
     inline bool InputScalar(const char* label, ImGuiDataType data_type, void* p_data, const void* p_step = NULL, const void* p_step_fast = NULL, const char* format = NULL,
-                            ImGuiInputTextFlags flags = 0) {
+        ImGuiInputTextFlags flags = 0) {
         using func_t = bool (*)(const char*, ImGuiDataType, void*, const void*, const void*, const char*, ImGuiInputTextFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igInputScalar");
         return func(label, data_type, p_data, p_step, p_step_fast, format, flags);
     }
     inline bool InputScalarN(const char* label, ImGuiDataType data_type, void* p_data, int components, const void* p_step = NULL, const void* p_step_fast = NULL, const char* format = NULL,
-                             ImGuiInputTextFlags flags = 0) {
+        ImGuiInputTextFlags flags = 0) {
         using func_t = bool (*)(const char*, ImGuiDataType, void*, int, const void*, const void*, const char*, ImGuiInputTextFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igInputScalarN");
         return func(label, data_type, p_data, components, p_step, p_step_fast, format, flags);
@@ -4972,7 +4992,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline bool ListBox(const char* label, int* current_item, const char* const items[], int items_count, int height_in_items = -1) {
-        using func_t = bool (*)(const char*, int*, const char* const[], int, int);
+        using func_t = bool (*)(const char*, int*, const char* const [], int, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igListBox_Str_arr");
         return func(label, current_item, items, items_count, height_in_items);
     }
@@ -4982,25 +5002,25 @@ namespace ImGuiMCP {
         return func(label, current_item, getter, user_data, items_count, height_in_items);
     }
     inline void PlotLines(const char* label, const float* values, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX,
-                          ImVec2 graph_size = ImVec2(0, 0), int stride = sizeof(float)) {
+        ImVec2 graph_size = ImVec2(0, 0), int stride = sizeof(float)) {
         using func_t = void (*)(const char*, const float*, int, int, const char*, float, float, ImVec2, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igPlotLines_FloatPtr");
         return func(label, values, values_count, values_offset, overlay_text, scale_min, scale_max, graph_size, stride);
     }
     inline void PlotLines(const char* label, float (*values_getter)(void* data, int idx), void* data, int values_count, int values_offset = 0, const char* overlay_text = NULL,
-                          float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0, 0)) {
+        float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0, 0)) {
         using func_t = void (*)(const char*, float (*)(void*, int), void*, int, int, const char*, float, float, ImVec2);
         func_t func = GetMenuFrameworkFunction<func_t>("igPlotLines_FnFloatPtr");
         return func(label, values_getter, data, values_count, values_offset, overlay_text, scale_min, scale_max, graph_size);
     }
     inline void PlotHistogram(const char* label, const float* values, int values_count, int values_offset = 0, const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX,
-                              ImVec2 graph_size = ImVec2(0, 0), int stride = sizeof(float)) {
+        ImVec2 graph_size = ImVec2(0, 0), int stride = sizeof(float)) {
         using func_t = void (*)(const char*, const float*, int, int, const char*, float, float, ImVec2, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igPlotHistogram_FloatPtr");
         return func(label, values, values_count, values_offset, overlay_text, scale_min, scale_max, graph_size, stride);
     }
     inline void PlotHistogram(const char* label, float (*values_getter)(void* data, int idx), void* data, int values_count, int values_offset = 0, const char* overlay_text = NULL,
-                              float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0, 0)) {
+        float scale_min = FLT_MAX, float scale_max = FLT_MAX, ImVec2 graph_size = ImVec2(0, 0)) {
         using func_t = void (*)(const char*, float (*)(void*, int), void*, int, int, const char*, float, float, ImVec2);
         func_t func = GetMenuFrameworkFunction<func_t>("igPlotHistogram_FnFloatPtr");
         return func(label, values_getter, data, values_count, values_offset, overlay_text, scale_min, scale_max, graph_size);
@@ -5212,7 +5232,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiTableSortSpecs* TableGetSortSpecs() {
-        using func_t = ImGuiTableSortSpecs* (*)();
+        using func_t = ImGuiTableSortSpecs * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetSortSpecs");
         return func();
     }
@@ -5237,7 +5257,7 @@ namespace ImGuiMCP {
         return func(column_n);
     }
     inline ImGuiTableColumnFlags TableGetColumnFlags(int column_n = -1) {
-        using func_t = ImGuiTableColumnFlags (*)(int);
+        using func_t = ImGuiTableColumnFlags(*)(int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetColumnFlags");
         return func(column_n);
     }
@@ -5322,12 +5342,12 @@ namespace ImGuiMCP {
         return func(tab_or_docked_window_label);
     }
     inline ImGuiID DockSpace(ImGuiID dockspace_id, const ImVec2 size = ImVec2(0, 0), ImGuiDockNodeFlags flags = 0, const ImGuiWindowClass* window_class = NULL) {
-        using func_t = ImGuiID (*)(ImGuiID, const ImVec2, ImGuiDockNodeFlags, const ImGuiWindowClass*);
+        using func_t = ImGuiID(*)(ImGuiID, const ImVec2, ImGuiDockNodeFlags, const ImGuiWindowClass*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockSpace");
         return func(dockspace_id, size, flags, window_class);
     }
     inline ImGuiID DockSpaceOverViewport(ImGuiID dockspace_id = 0, const ImGuiViewport* viewport = NULL, ImGuiDockNodeFlags flags = 0, const ImGuiWindowClass* window_class = NULL) {
-        using func_t = ImGuiID (*)(ImGuiID, const ImGuiViewport*, ImGuiDockNodeFlags, const ImGuiWindowClass*);
+        using func_t = ImGuiID(*)(ImGuiID, const ImGuiViewport*, ImGuiDockNodeFlags, const ImGuiWindowClass*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockSpaceOverViewport");
         return func(dockspace_id, viewport, flags, window_class);
     }
@@ -5342,7 +5362,7 @@ namespace ImGuiMCP {
         return func(window_class);
     }
     inline ImGuiID GetWindowDockID() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowDockID");
         return func();
     }
@@ -5517,7 +5537,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID GetItemID() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetItemID");
         return func();
     }
@@ -5543,27 +5563,27 @@ namespace ImGuiMCP {
         return out;
     }
     inline ImGuiViewport* GetMainViewport() {
-        using func_t = ImGuiViewport* (*)();
+        using func_t = ImGuiViewport * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetMainViewport");
         return func();
     }
     inline ImDrawList* GetBackgroundDrawList() {
-        using func_t = ImDrawList* (*)();
+        using func_t = ImDrawList * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetBackgroundDrawList_Nil");
         return func();
     }
     inline ImDrawList* GetForegroundDrawList() {
-        using func_t = ImDrawList* (*)();
+        using func_t = ImDrawList * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetForegroundDrawList_Nil");
         return func();
     }
     inline ImDrawList* GetBackgroundDrawList(ImGuiViewport* viewport) {
-        using func_t = ImDrawList* (*)(ImGuiViewport*);
+        using func_t = ImDrawList * (*)(ImGuiViewport*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetBackgroundDrawList_ViewportPtr");
         return func(viewport);
     }
     inline ImDrawList* GetForegroundDrawList(ImGuiViewport* viewport) {
-        using func_t = ImDrawList* (*)(ImGuiViewport*);
+        using func_t = ImDrawList * (*)(ImGuiViewport*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetForegroundDrawList_ViewportPtr");
         return func(viewport);
     }
@@ -5588,7 +5608,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImDrawListSharedData* GetDrawListSharedData() {
-        using func_t = ImDrawListSharedData* (*)();
+        using func_t = ImDrawListSharedData * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetDrawListSharedData");
         return func();
     }
@@ -5603,7 +5623,7 @@ namespace ImGuiMCP {
         return func(storage);
     }
     inline ImGuiStorage* GetStateStorage() {
-        using func_t = ImGuiStorage* (*)();
+        using func_t = ImGuiStorage * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetStateStorage");
         return func();
     }
@@ -5622,7 +5642,7 @@ namespace ImGuiMCP {
         return out;
     }
     inline ImU32 ColorConvertFloat4ToU32(const ImVec4 in) {
-        using func_t = ImU32 (*)(const ImVec4);
+        using func_t = ImU32(*)(const ImVec4);
         func_t func = GetMenuFrameworkFunction<func_t>("igColorConvertFloat4ToU32");
         return func(in);
     }
@@ -5753,7 +5773,7 @@ namespace ImGuiMCP {
         return func(button);
     }
     inline ImGuiMouseCursor GetMouseCursor() {
-        using func_t = ImGuiMouseCursor (*)();
+        using func_t = ImGuiMouseCursor(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetMouseCursor");
         return func();
     }
@@ -5838,7 +5858,7 @@ namespace ImGuiMCP {
         return func(ptr);
     }
     inline ImGuiPlatformIO* GetPlatformIO() {
-        using func_t = ImGuiPlatformIO* (*)();
+        using func_t = ImGuiPlatformIO * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetPlatformIO");
         return func();
     }
@@ -5858,18 +5878,18 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiViewport* FindViewportByID(ImGuiID id) {
-        using func_t = ImGuiViewport* (*)(ImGuiID);
+        using func_t = ImGuiViewport * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindViewportByID");
         return func(id);
     }
     inline ImGuiViewport* FindViewportByPlatformHandle(void* platform_handle) {
-        using func_t = ImGuiViewport* (*)(void*);
+        using func_t = ImGuiViewport * (*)(void*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindViewportByPlatformHandle");
         return func(platform_handle);
     }
     namespace ImGuiTableSortSpecsManager {
         inline ImGuiTableSortSpecs* Create(void) {
-            using func_t = ImGuiTableSortSpecs* (*)();
+            using func_t = ImGuiTableSortSpecs * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableSortSpecs_ImGuiTableSortSpecs");
             return func();
         }
@@ -5881,7 +5901,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableColumnSortSpecsManager {
         inline ImGuiTableColumnSortSpecs* Create(void) {
-            using func_t = ImGuiTableColumnSortSpecs* (*)();
+            using func_t = ImGuiTableColumnSortSpecs * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableColumnSortSpecs_ImGuiTableColumnSortSpecs");
             return func();
         }
@@ -5894,7 +5914,7 @@ namespace ImGuiMCP {
     namespace ImGuiStyleManager {
 
         inline ImGuiStyle* Create(void) {
-            using func_t = ImGuiStyle* (*)();
+            using func_t = ImGuiStyle * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStyle_ImGuiStyle");
             return func();
         }
@@ -5987,7 +6007,7 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiIO* Create(void) {
-            using func_t = ImGuiIO* (*)();
+            using func_t = ImGuiIO * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiIO_ImGuiIO");
             return func();
         }
@@ -6001,7 +6021,7 @@ namespace ImGuiMCP {
     namespace ImGuiInputTextCallbackDataManager {
 
         inline ImGuiInputTextCallbackData* Create(void) {
-            using func_t = ImGuiInputTextCallbackData* (*)();
+            using func_t = ImGuiInputTextCallbackData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiInputTextCallbackData_ImGuiInputTextCallbackData");
             return func();
         }
@@ -6040,7 +6060,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiWindowClassManager {
         inline ImGuiWindowClass* Create(void) {
-            using func_t = ImGuiWindowClass* (*)();
+            using func_t = ImGuiWindowClass * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindowClass_ImGuiWindowClass");
             return func();
         }
@@ -6053,7 +6073,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiPayloadManager {
         inline ImGuiPayload* Create(void) {
-            using func_t = ImGuiPayload* (*)();
+            using func_t = ImGuiPayload * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPayload_ImGuiPayload");
             return func();
         }
@@ -6086,7 +6106,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiOnceUponAFrameManager {
         inline ImGuiOnceUponAFrame* Create(void) {
-            using func_t = ImGuiOnceUponAFrame* (*)();
+            using func_t = ImGuiOnceUponAFrame * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiOnceUponAFrame_ImGuiOnceUponAFrame");
             return func();
         }
@@ -6099,7 +6119,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiTextRangeManager {
         inline ImGuiTextRange* Create(void) {
-            using func_t = ImGuiTextRange* (*)();
+            using func_t = ImGuiTextRange * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTextRange_ImGuiTextRange_Nil");
             return func();
         }
@@ -6109,7 +6129,7 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiTextRange* Create(const char* _b, const char* _e) {
-            using func_t = ImGuiTextRange* (*)(const char*, const char*);
+            using func_t = ImGuiTextRange * (*)(const char*, const char*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTextRange_ImGuiTextRange_Str");
             return func(_b, _e);
         }
@@ -6128,7 +6148,7 @@ namespace ImGuiMCP {
     namespace ImGuiTextBufferManager {
 
         inline ImGuiTextBuffer* Create(void) {
-            using func_t = ImGuiTextBuffer* (*)();
+            using func_t = ImGuiTextBuffer * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTextBuffer_ImGuiTextBuffer");
             return func();
         }
@@ -6187,7 +6207,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiStoragePairManger {
         inline ImGuiStoragePair* Create(ImGuiID _key, int _val) {
-            using func_t = ImGuiStoragePair* (*)(ImGuiID, int);
+            using func_t = ImGuiStoragePair * (*)(ImGuiID, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStoragePair_ImGuiStoragePair_Int");
             return func(_key, _val);
         }
@@ -6197,12 +6217,12 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiStoragePair* Create(ImGuiID _key, float _val) {
-            using func_t = ImGuiStoragePair* (*)(ImGuiID, float);
+            using func_t = ImGuiStoragePair * (*)(ImGuiID, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStoragePair_ImGuiStoragePair_Float");
             return func(_key, _val);
         }
         inline ImGuiStoragePair* Create(ImGuiID _key, void* _val) {
-            using func_t = ImGuiStoragePair* (*)(ImGuiID, void*);
+            using func_t = ImGuiStoragePair * (*)(ImGuiID, void*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStoragePair_ImGuiStoragePair_Ptr");
             return func(_key, _val);
         }
@@ -6288,7 +6308,7 @@ namespace ImGuiMCP {
     namespace ImGuiListClipperManager {
 
         inline ImGuiListClipper* Create(void) {
-            using func_t = ImGuiListClipper* (*)();
+            using func_t = ImGuiListClipper * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiListClipper_ImGuiListClipper");
             return func();
         }
@@ -6326,7 +6346,7 @@ namespace ImGuiMCP {
 
     namespace ImColorManager {
         inline ImColor* Create(void) {
-            using func_t = ImColor* (*)();
+            using func_t = ImColor * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImColor_ImColor_Nil");
             return func();
         }
@@ -6336,22 +6356,22 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImColor* Create(float r, float g, float b, float a) {
-            using func_t = ImColor* (*)(float, float, float, float);
+            using func_t = ImColor * (*)(float, float, float, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImColor_ImColor_Float");
             return func(r, g, b, a);
         }
         inline ImColor* Create(const ImVec4 col) {
-            using func_t = ImColor* (*)(const ImVec4);
+            using func_t = ImColor * (*)(const ImVec4);
             func_t func = GetMenuFrameworkFunction<func_t>("ImColor_ImColor_Vec4");
             return func(col);
         }
         inline ImColor* Create(int r, int g, int b, int a) {
-            using func_t = ImColor* (*)(int, int, int, int);
+            using func_t = ImColor * (*)(int, int, int, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImColor_ImColor_Int");
             return func(r, g, b, a);
         }
         inline ImColor* Create(ImU32 rgba) {
-            using func_t = ImColor* (*)(ImU32);
+            using func_t = ImColor * (*)(ImU32);
             func_t func = GetMenuFrameworkFunction<func_t>("ImColor_ImColor_U32");
             return func(rgba);
         }
@@ -6371,7 +6391,7 @@ namespace ImGuiMCP {
 
     namespace ImDrawCmdManager {
         inline ImDrawCmd* Create(void) {
-            using func_t = ImDrawCmd* (*)();
+            using func_t = ImDrawCmd * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawCmd_ImDrawCmd");
             return func();
         }
@@ -6381,7 +6401,7 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImTextureID GetTexID(ImDrawCmd* self) {
-            using func_t = ImTextureID (*)(ImDrawCmd*);
+            using func_t = ImTextureID(*)(ImDrawCmd*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawCmd_GetTexID");
             return func(self);
         }
@@ -6389,7 +6409,7 @@ namespace ImGuiMCP {
 
     namespace ImDrawListSplitterManager {
         inline ImDrawListSplitter* Create(void) {
-            using func_t = ImDrawListSplitter* (*)();
+            using func_t = ImDrawListSplitter * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawListSplitter_ImDrawListSplitter");
             return func();
         }
@@ -6428,7 +6448,7 @@ namespace ImGuiMCP {
     namespace ImDrawListManager {
 
         inline ImDrawList* Create(ImDrawListSharedData* shared_data) {
-            using func_t = ImDrawList* (*)(ImDrawListSharedData*);
+            using func_t = ImDrawList * (*)(ImDrawListSharedData*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_ImDrawList");
             return func(shared_data);
         }
@@ -6552,7 +6572,7 @@ namespace ImGuiMCP {
             return func(self, pos, col, text_begin, text_end);
         }
         inline void AddText(ImDrawList* self, const ImFont* font, float font_size, const ImVec2 pos, ImU32 col, const char* text_begin, const char* text_end = 0, float wrap_width = 0.0f,
-                            const ImVec4* cpu_fine_clip_rect = nullptr) {
+            const ImVec4* cpu_fine_clip_rect = nullptr) {
             using func_t = void (*)(ImDrawList*, const ImFont*, float, const ImVec2, ImU32, const char*, const char*, float, const ImVec4*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_AddText_FontPtr");
             return func(self, font, font_size, pos, col, text_begin, text_end, wrap_width, cpu_fine_clip_rect);
@@ -6588,13 +6608,13 @@ namespace ImGuiMCP {
             return func(self, user_texture_id, p_min, p_max, uv_min, uv_max, col);
         }
         inline void AddImageQuad(ImDrawList* self, ImTextureID user_texture_id, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 uv1, const ImVec2 uv2,
-                                 const ImVec2 uv3, const ImVec2 uv4, ImU32 col) {
+            const ImVec2 uv3, const ImVec2 uv4, ImU32 col) {
             using func_t = void (*)(ImDrawList*, ImTextureID, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, ImU32);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_AddImageQuad");
             return func(self, user_texture_id, p1, p2, p3, p4, uv1, uv2, uv3, uv4, col);
         }
         inline void AddImageRounded(ImDrawList* self, ImTextureID user_texture_id, const ImVec2 p_min, const ImVec2 p_max, const ImVec2 uv_min, const ImVec2 uv_max, ImU32 col, float rounding,
-                                    ImDrawFlags flags) {
+            ImDrawFlags flags) {
             using func_t = void (*)(ImDrawList*, ImTextureID, const ImVec2, const ImVec2, const ImVec2, const ImVec2, ImU32, float, ImDrawFlags);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_AddImageRounded");
             return func(self, user_texture_id, p_min, p_max, uv_min, uv_max, col, rounding, flags);
@@ -6670,7 +6690,7 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImDrawList* CloneOutput(ImDrawList* self) {
-            using func_t = ImDrawList* (*)(ImDrawList*);
+            using func_t = ImDrawList * (*)(ImDrawList*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_CloneOutput");
             return func(self);
         }
@@ -6710,7 +6730,7 @@ namespace ImGuiMCP {
             return func(self, a, b, uv_a, uv_b, col);
         }
         inline void PrimQuadUV(ImDrawList* self, const ImVec2 a, const ImVec2 b, const ImVec2 c, const ImVec2 d, const ImVec2 uv_a, const ImVec2 uv_b, const ImVec2 uv_c, const ImVec2 uv_d,
-                               ImU32 col) {
+            ImU32 col) {
             using func_t = void (*)(ImDrawList*, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, const ImVec2, ImU32);
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawList_PrimQuadUV");
             return func(self, a, b, c, d, uv_a, uv_b, uv_c, uv_d, col);
@@ -6785,7 +6805,7 @@ namespace ImGuiMCP {
     namespace ImDrawDataManager {
 
         inline ImDrawData* Create(void) {
-            using func_t = ImDrawData* (*)();
+            using func_t = ImDrawData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawData_ImDrawData");
             return func();
         }
@@ -6820,7 +6840,7 @@ namespace ImGuiMCP {
     namespace ImFontConfigManager {
 
         inline ImFontConfig* Create(void) {
-            using func_t = ImFontConfig* (*)();
+            using func_t = ImFontConfig * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontConfig_ImFontConfig");
             return func();
         }
@@ -6834,7 +6854,7 @@ namespace ImGuiMCP {
     namespace ImFontGlyphRangesBuilderManager {
 
         inline ImFontGlyphRangesBuilder* Create(void) {
-            using func_t = ImFontGlyphRangesBuilder* (*)();
+            using func_t = ImFontGlyphRangesBuilder * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontGlyphRangesBuilder_ImFontGlyphRangesBuilder");
             return func();
         }
@@ -6882,7 +6902,7 @@ namespace ImGuiMCP {
 
     namespace ImFontAtlasCustomRectManager {
         inline ImFontAtlasCustomRect* Create(void) {
-            using func_t = ImFontAtlasCustomRect* (*)();
+            using func_t = ImFontAtlasCustomRect * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlasCustomRect_ImFontAtlasCustomRect");
             return func();
         }
@@ -6900,7 +6920,7 @@ namespace ImGuiMCP {
 
     namespace ImFontAtlasManager {
         inline ImFontAtlas* Create(void) {
-            using func_t = ImFontAtlas* (*)();
+            using func_t = ImFontAtlas * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_ImFontAtlas");
             return func();
         }
@@ -6910,33 +6930,33 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImFont* AddFont(ImFontAtlas* self, const ImFontConfig* font_cfg) {
-            using func_t = ImFont* (*)(ImFontAtlas*, const ImFontConfig*);
+            using func_t = ImFont * (*)(ImFontAtlas*, const ImFontConfig*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFont");
             return func(self, font_cfg);
         }
         inline ImFont* AddFontDefault(ImFontAtlas* self, const ImFontConfig* font_cfg) {
-            using func_t = ImFont* (*)(ImFontAtlas*, const ImFontConfig*);
+            using func_t = ImFont * (*)(ImFontAtlas*, const ImFontConfig*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFontDefault");
             return func(self, font_cfg);
         }
         inline ImFont* AddFontFromFileTTF(ImFontAtlas* self, const char* filename, float size_pixels, const ImFontConfig* font_cfg, const ImWchar* glyph_ranges) {
-            using func_t = ImFont* (*)(ImFontAtlas*, const char*, float, const ImFontConfig*, const ImWchar*);
+            using func_t = ImFont * (*)(ImFontAtlas*, const char*, float, const ImFontConfig*, const ImWchar*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFontFromFileTTF");
             return func(self, filename, size_pixels, font_cfg, glyph_ranges);
         }
         inline ImFont* AddFontFromMemoryTTF(ImFontAtlas* self, void* font_data, int font_data_size, float size_pixels, const ImFontConfig* font_cfg, const ImWchar* glyph_ranges) {
-            using func_t = ImFont* (*)(ImFontAtlas*, void*, int, float, const ImFontConfig*, const ImWchar*);
+            using func_t = ImFont * (*)(ImFontAtlas*, void*, int, float, const ImFontConfig*, const ImWchar*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFontFromMemoryTTF");
             return func(self, font_data, font_data_size, size_pixels, font_cfg, glyph_ranges);
         }
         inline ImFont* AddFontFromMemoryCompressedTTF(ImFontAtlas* self, const void* compressed_font_data, int compressed_font_data_size, float size_pixels, const ImFontConfig* font_cfg,
-                                                      const ImWchar* glyph_ranges) {
-            using func_t = ImFont* (*)(ImFontAtlas*, const void*, int, float, const ImFontConfig*, const ImWchar*);
+            const ImWchar* glyph_ranges) {
+            using func_t = ImFont * (*)(ImFontAtlas*, const void*, int, float, const ImFontConfig*, const ImWchar*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFontFromMemoryCompressedTTF");
             return func(self, compressed_font_data, compressed_font_data_size, size_pixels, font_cfg, glyph_ranges);
         }
         inline ImFont* AddFontFromMemoryCompressedBase85TTF(ImFontAtlas* self, const char* compressed_font_data_base85, float size_pixels, const ImFontConfig* font_cfg, const ImWchar* glyph_ranges) {
-            using func_t = ImFont* (*)(ImFontAtlas*, const char*, float, const ImFontConfig*, const ImWchar*);
+            using func_t = ImFont * (*)(ImFontAtlas*, const char*, float, const ImFontConfig*, const ImWchar*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_AddFontFromMemoryCompressedBase85TTF");
             return func(self, compressed_font_data_base85, size_pixels, font_cfg, glyph_ranges);
         }
@@ -7041,7 +7061,7 @@ namespace ImGuiMCP {
             return func(self, font, id, width, height, advance_x, offset);
         }
         inline ImFontAtlasCustomRect* GetCustomRectByIndex(ImFontAtlas* self, int index) {
-            using func_t = ImFontAtlasCustomRect* (*)(ImFontAtlas*, int);
+            using func_t = ImFontAtlasCustomRect * (*)(ImFontAtlas*, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFontAtlas_GetCustomRectByIndex");
             return func(self, index);
         }
@@ -7059,7 +7079,7 @@ namespace ImGuiMCP {
     namespace ImFontManger {
 
         inline ImFont* Create(void) {
-            using func_t = ImFont* (*)();
+            using func_t = ImFont * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImFont_ImFont");
             return func();
         }
@@ -7111,7 +7131,7 @@ namespace ImGuiMCP {
             return func(self, draw_list, size, pos, col, c);
         }
         inline void RenderText(ImFont* self, ImDrawList* draw_list, float size, const ImVec2 pos, ImU32 col, const ImVec4 clip_rect, const char* text_begin, const char* text_end, float wrap_width,
-                               bool cpu_fine_clip) {
+            bool cpu_fine_clip) {
             using func_t = void (*)(ImFont*, ImDrawList*, float, const ImVec2, ImU32, const ImVec4, const char*, const char*, float, bool);
             func_t func = GetMenuFrameworkFunction<func_t>("ImFont_RenderText");
             return func(self, draw_list, size, pos, col, clip_rect, text_begin, text_end, wrap_width, cpu_fine_clip);
@@ -7156,7 +7176,7 @@ namespace ImGuiMCP {
     namespace ImGuiViewportManager {
 
         inline ImGuiViewport* Create(void) {
-            using func_t = ImGuiViewport* (*)();
+            using func_t = ImGuiViewport * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiViewport_ImGuiViewport");
             return func();
         }
@@ -7185,7 +7205,7 @@ namespace ImGuiMCP {
     namespace ImGuiPlatformIOManager {
 
         inline ImGuiPlatformIO* Create(void) {
-            using func_t = ImGuiPlatformIO* (*)();
+            using func_t = ImGuiPlatformIO * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPlatformIO_ImGuiPlatformIO");
             return func();
         }
@@ -7198,7 +7218,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiPlatformMonitorManager {
         inline ImGuiPlatformMonitor* Create(void) {
-            using func_t = ImGuiPlatformMonitor* (*)();
+            using func_t = ImGuiPlatformMonitor * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPlatformMonitor_ImGuiPlatformMonitor");
             return func();
         }
@@ -7211,7 +7231,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiPlatformImeDataManager {
         inline ImGuiPlatformImeData* Create(void) {
-            using func_t = ImGuiPlatformImeData* (*)();
+            using func_t = ImGuiPlatformImeData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPlatformImeData_ImGuiPlatformImeData");
             return func();
         }
@@ -7223,12 +7243,12 @@ namespace ImGuiMCP {
     }
 
     inline ImGuiID ImHashData(const void* data, size_t data_size, ImGuiID seed) {
-        using func_t = ImGuiID (*)(const void*, size_t, ImGuiID);
+        using func_t = ImGuiID(*)(const void*, size_t, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igImHashData");
         return func(data, data_size, seed);
     }
     inline ImGuiID ImHashStr(const char* data, size_t data_size, ImGuiID seed) {
-        using func_t = ImGuiID (*)(const char*, size_t, ImGuiID);
+        using func_t = ImGuiID(*)(const char*, size_t, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igImHashStr");
         return func(data, data_size, seed);
     }
@@ -7238,7 +7258,7 @@ namespace ImGuiMCP {
         return func(base, count, size_of_element, compare_func);
     }
     inline ImU32 ImAlphaBlendColors(ImU32 col_a, ImU32 col_b) {
-        using func_t = ImU32 (*)(ImU32, ImU32);
+        using func_t = ImU32(*)(ImU32, ImU32);
         func_t func = GetMenuFrameworkFunction<func_t>("igImAlphaBlendColors");
         return func(col_a, col_b);
     }
@@ -7434,7 +7454,7 @@ namespace ImGuiMCP {
         return func(in_text, in_text_end);
     }
     inline ImFileHandle ImFileOpen(const char* filename, const char* mode) {
-        using func_t = ImFileHandle (*)(const char*, const char*);
+        using func_t = ImFileHandle(*)(const char*, const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igImFileOpen");
         return func(filename, mode);
     }
@@ -7444,17 +7464,17 @@ namespace ImGuiMCP {
         return func(file);
     }
     inline ImU64 ImFileGetSize(ImFileHandle file) {
-        using func_t = ImU64 (*)(ImFileHandle);
+        using func_t = ImU64(*)(ImFileHandle);
         func_t func = GetMenuFrameworkFunction<func_t>("igImFileGetSize");
         return func(file);
     }
     inline ImU64 ImFileRead(void* data, ImU64 size, ImU64 count, ImFileHandle file) {
-        using func_t = ImU64 (*)(void*, ImU64, ImU64, ImFileHandle);
+        using func_t = ImU64(*)(void*, ImU64, ImU64, ImFileHandle);
         func_t func = GetMenuFrameworkFunction<func_t>("igImFileRead");
         return func(data, size, count, file);
     }
     inline ImU64 ImFileWrite(const void* data, ImU64 size, ImU64 count, ImFileHandle file) {
-        using func_t = ImU64 (*)(const void*, ImU64, ImU64, ImFileHandle);
+        using func_t = ImU64(*)(const void*, ImU64, ImU64, ImFileHandle);
         func_t func = GetMenuFrameworkFunction<func_t>("igImFileWrite");
         return func(data, size, count, file);
     }
@@ -7708,7 +7728,7 @@ namespace ImGuiMCP {
     namespace ImVec1Manager {
 
         inline ImVec1* Create(void) {
-            using func_t = ImVec1* (*)();
+            using func_t = ImVec1 * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec1_ImVec1_Nil");
             return func();
         }
@@ -7718,14 +7738,14 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImVec1* Create(float _x) {
-            using func_t = ImVec1* (*)(float);
+            using func_t = ImVec1 * (*)(float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec1_ImVec1_Float");
             return func(_x);
         }
     }
     namespace ImVec2ihManager {
         inline ImVec2ih* Create(void) {
-            using func_t = ImVec2ih* (*)();
+            using func_t = ImVec2ih * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec2ih_ImVec2ih_Nil");
             return func();
         }
@@ -7735,12 +7755,12 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImVec2ih* Create(short _x, short _y) {
-            using func_t = ImVec2ih* (*)(short, short);
+            using func_t = ImVec2ih * (*)(short, short);
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec2ih_ImVec2ih_short");
             return func(_x, _y);
         }
         inline ImVec2ih* Create(const ImVec2 rhs) {
-            using func_t = ImVec2ih* (*)(const ImVec2);
+            using func_t = ImVec2ih * (*)(const ImVec2);
             func_t func = GetMenuFrameworkFunction<func_t>("ImVec2ih_ImVec2ih_Vec2");
             return func(rhs);
         }
@@ -7748,7 +7768,7 @@ namespace ImGuiMCP {
     namespace ImRectManager {
 
         inline ImRect* ImRect_Nil(void) {
-            using func_t = ImRect* (*)();
+            using func_t = ImRect * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImRect_ImRect_Nil");
             return func();
         }
@@ -7758,17 +7778,17 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImRect* ImRect_Vec2(const ImVec2 min, const ImVec2 max) {
-            using func_t = ImRect* (*)(const ImVec2, const ImVec2);
+            using func_t = ImRect * (*)(const ImVec2, const ImVec2);
             func_t func = GetMenuFrameworkFunction<func_t>("ImRect_ImRect_Vec2");
             return func(min, max);
         }
         inline ImRect* ImRect_Vec4(const ImVec4 v) {
-            using func_t = ImRect* (*)(const ImVec4);
+            using func_t = ImRect * (*)(const ImVec4);
             func_t func = GetMenuFrameworkFunction<func_t>("ImRect_ImRect_Vec4");
             return func(v);
         }
         inline ImRect* ImRect_Float(float x1, float y1, float x2, float y2) {
-            using func_t = ImRect* (*)(float, float, float, float);
+            using func_t = ImRect * (*)(float, float, float, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImRect_ImRect_Float");
             return func(x1, y1, x2, y2);
         }
@@ -7913,7 +7933,7 @@ namespace ImGuiMCP {
         }
     }
     inline size_t ImBitArrayGetStorageSizeInBytes(int bitcount) {
-        using func_t = size_t (*)(int);
+        using func_t = size_t(*)(int);
         func_t func = GetMenuFrameworkFunction<func_t>("igImBitArrayGetStorageSizeInBytes");
         return func(bitcount);
     }
@@ -7995,7 +8015,7 @@ namespace ImGuiMCP {
 
     namespace ImDrawListSharedDataManager {
         inline ImDrawListSharedData* Create(void) {
-            using func_t = ImDrawListSharedData* (*)();
+            using func_t = ImDrawListSharedData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawListSharedData_ImDrawListSharedData");
             return func();
         }
@@ -8012,7 +8032,7 @@ namespace ImGuiMCP {
     }
     namespace ImDrawDataBuilderManager {
         inline ImDrawDataBuilder* Create(void) {
-            using func_t = ImDrawDataBuilder* (*)();
+            using func_t = ImDrawDataBuilder * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImDrawDataBuilder_ImDrawDataBuilder");
             return func();
         }
@@ -8033,7 +8053,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiStyleModManager {
         inline ImGuiStyleMod* Create(ImGuiStyleVar idx, int v) {
-            using func_t = ImGuiStyleMod* (*)(ImGuiStyleVar, int);
+            using func_t = ImGuiStyleMod * (*)(ImGuiStyleVar, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStyleMod_ImGuiStyleMod_Int");
             return func(idx, v);
         }
@@ -8043,12 +8063,12 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiStyleMod* Create(ImGuiStyleVar idx, float v) {
-            using func_t = ImGuiStyleMod* (*)(ImGuiStyleVar, float);
+            using func_t = ImGuiStyleMod * (*)(ImGuiStyleVar, float);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStyleMod_ImGuiStyleMod_Float");
             return func(idx, v);
         }
         inline ImGuiStyleMod* Create(ImGuiStyleVar idx, ImVec2 v) {
-            using func_t = ImGuiStyleMod* (*)(ImGuiStyleVar, ImVec2);
+            using func_t = ImGuiStyleMod * (*)(ImGuiStyleVar, ImVec2);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStyleMod_ImGuiStyleMod_Vec2");
             return func(idx, v);
         }
@@ -8057,7 +8077,7 @@ namespace ImGuiMCP {
     namespace ImGuiComboPreviewDataManager {
 
         inline ImGuiComboPreviewData* Create(void) {
-            using func_t = ImGuiComboPreviewData* (*)();
+            using func_t = ImGuiComboPreviewData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiComboPreviewData_ImGuiComboPreviewData");
             return func();
         }
@@ -8071,7 +8091,7 @@ namespace ImGuiMCP {
     namespace ImGuiMenuColumnsManager {
 
         inline ImGuiMenuColumns* Craete(void) {
-            using func_t = ImGuiMenuColumns* (*)();
+            using func_t = ImGuiMenuColumns * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiMenuColumns_ImGuiMenuColumns");
             return func();
         }
@@ -8099,7 +8119,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiInputTextDeactivatedStateManager {
         inline ImGuiInputTextDeactivatedState* Create(void) {
-            using func_t = ImGuiInputTextDeactivatedState* (*)();
+            using func_t = ImGuiInputTextDeactivatedState * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiInputTextDeactivatedState_ImGuiInputTextDeactivatedState");
             return func();
         }
@@ -8122,7 +8142,7 @@ namespace ImGuiMCP {
     namespace ImGuiInputTextStateManager {
 
         inline ImGuiInputTextState* Create(void) {
-            using func_t = ImGuiInputTextState* (*)();
+            using func_t = ImGuiInputTextState * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiInputTextState_ImGuiInputTextState");
             return func();
         }
@@ -8216,7 +8236,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiNextWindowDataManager {
         inline ImGuiNextWindowData* Create(void) {
-            using func_t = ImGuiNextWindowData* (*)();
+            using func_t = ImGuiNextWindowData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiNextWindowData_ImGuiNextWindowData");
             return func();
         }
@@ -8234,7 +8254,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiNextItemDataManager {
         inline ImGuiNextItemData* Create(void) {
-            using func_t = ImGuiNextItemData* (*)();
+            using func_t = ImGuiNextItemData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiNextItemData_ImGuiNextItemData");
             return func();
         }
@@ -8253,7 +8273,7 @@ namespace ImGuiMCP {
     namespace ImGuiLastItemDataManager {
 
         inline ImGuiLastItemData* Create(void) {
-            using func_t = ImGuiLastItemData* (*)();
+            using func_t = ImGuiLastItemData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiLastItemData_ImGuiLastItemData");
             return func();
         }
@@ -8268,7 +8288,7 @@ namespace ImGuiMCP {
     namespace ImGuiStackSizesManager {
 
         inline ImGuiStackSizes* Create(void) {
-            using func_t = ImGuiStackSizes* (*)();
+            using func_t = ImGuiStackSizes * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStackSizes_ImGuiStackSizes");
             return func();
         }
@@ -8291,7 +8311,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiPtrOrIndexManager {
         inline ImGuiPtrOrIndex* Create(void* ptr) {
-            using func_t = ImGuiPtrOrIndex* (*)(void*);
+            using func_t = ImGuiPtrOrIndex * (*)(void*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPtrOrIndex_ImGuiPtrOrIndex_Ptr");
             return func(ptr);
         }
@@ -8301,7 +8321,7 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiPtrOrIndex* Create(int index) {
-            using func_t = ImGuiPtrOrIndex* (*)(int);
+            using func_t = ImGuiPtrOrIndex * (*)(int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPtrOrIndex_ImGuiPtrOrIndex_Int");
             return func(index);
         }
@@ -8310,7 +8330,7 @@ namespace ImGuiMCP {
     namespace ImGuiPopupDataManager {
 
         inline ImGuiPopupData* Create(void) {
-            using func_t = ImGuiPopupData* (*)();
+            using func_t = ImGuiPopupData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiPopupData_ImGuiPopupData");
             return func();
         }
@@ -8324,7 +8344,7 @@ namespace ImGuiMCP {
     namespace ImGuiInputEventManager {
 
         inline ImGuiInputEvent* Create(void) {
-            using func_t = ImGuiInputEvent* (*)();
+            using func_t = ImGuiInputEvent * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiInputEvent_ImGuiInputEvent");
             return func();
         }
@@ -8338,7 +8358,7 @@ namespace ImGuiMCP {
     namespace ImGuiKeyRoutingDataManager {
 
         inline ImGuiKeyRoutingData* Create(void) {
-            using func_t = ImGuiKeyRoutingData* (*)();
+            using func_t = ImGuiKeyRoutingData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiKeyRoutingData_ImGuiKeyRoutingData");
             return func();
         }
@@ -8351,7 +8371,7 @@ namespace ImGuiMCP {
 
     namespace ImGuiKeyRoutingTableManager {
         inline ImGuiKeyRoutingTable* Create(void) {
-            using func_t = ImGuiKeyRoutingTable* (*)();
+            using func_t = ImGuiKeyRoutingTable * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiKeyRoutingTable_ImGuiKeyRoutingTable");
             return func();
         }
@@ -8368,7 +8388,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiKeyOwnerDataManager {
         inline ImGuiKeyOwnerData* Create(void) {
-            using func_t = ImGuiKeyOwnerData* (*)();
+            using func_t = ImGuiKeyOwnerData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiKeyOwnerData_ImGuiKeyOwnerData");
             return func();
         }
@@ -8380,12 +8400,12 @@ namespace ImGuiMCP {
     }
     namespace ImGuiListClipperRangeManager {
         inline ImGuiListClipperRange FromIndices(int min, int max) {
-            using func_t = ImGuiListClipperRange (*)(int, int);
+            using func_t = ImGuiListClipperRange(*)(int, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiListClipperRange_FromIndices");
             return func(min, max);
         }
         inline ImGuiListClipperRange FromPositions(float y1, float y2, int off_min, int off_max) {
-            using func_t = ImGuiListClipperRange (*)(float, float, int, int);
+            using func_t = ImGuiListClipperRange(*)(float, float, int, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiListClipperRange_FromPositions");
             return func(y1, y2, off_min, off_max);
         }
@@ -8393,7 +8413,7 @@ namespace ImGuiMCP {
     namespace ImGuiListClipperDataManager {
 
         inline ImGuiListClipperData* Create(void) {
-            using func_t = ImGuiListClipperData* (*)();
+            using func_t = ImGuiListClipperData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiListClipperData_ImGuiListClipperData");
             return func();
         }
@@ -8411,7 +8431,7 @@ namespace ImGuiMCP {
     namespace ImGuiNavItemDataManager {
 
         inline ImGuiNavItemData* Create(void) {
-            using func_t = ImGuiNavItemData* (*)();
+            using func_t = ImGuiNavItemData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiNavItemData_ImGuiNavItemData");
             return func();
         }
@@ -8428,7 +8448,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTypingSelectStateManager {
         inline ImGuiTypingSelectState* Create(void) {
-            using func_t = ImGuiTypingSelectState* (*)();
+            using func_t = ImGuiTypingSelectState * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTypingSelectState_ImGuiTypingSelectState");
             return func();
         }
@@ -8445,7 +8465,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiOldColumnDataManager {
         inline ImGuiOldColumnData* Create(void) {
-            using func_t = ImGuiOldColumnData* (*)();
+            using func_t = ImGuiOldColumnData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiOldColumnData_ImGuiOldColumnData");
             return func();
         }
@@ -8459,7 +8479,7 @@ namespace ImGuiMCP {
     namespace ImGuiOldColumnsManager {
 
         inline ImGuiOldColumns* Create(void) {
-            using func_t = ImGuiOldColumns* (*)();
+            using func_t = ImGuiOldColumns * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiOldColumns_ImGuiOldColumns");
             return func();
         }
@@ -8473,7 +8493,7 @@ namespace ImGuiMCP {
     namespace ImGuiDockNodeManager {
 
         inline ImGuiDockNode* Create(ImGuiID id) {
-            using func_t = ImGuiDockNode* (*)(ImGuiID);
+            using func_t = ImGuiDockNode * (*)(ImGuiID);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiDockNode_ImGuiDockNode");
             return func(id);
         }
@@ -8548,7 +8568,7 @@ namespace ImGuiMCP {
     namespace ImGuiDockContextManager {
 
         inline ImGuiDockContext* Create(void) {
-            using func_t = ImGuiDockContext* (*)();
+            using func_t = ImGuiDockContext * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiDockContext_ImGuiDockContext");
             return func();
         }
@@ -8561,7 +8581,7 @@ namespace ImGuiMCP {
     namespace ImGuiViewportPManager {
 
         inline ImGuiViewportP* Create(void) {
-            using func_t = ImGuiViewportP* (*)();
+            using func_t = ImGuiViewportP * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiViewportP_ImGuiViewportP");
             return func();
         }
@@ -8619,7 +8639,7 @@ namespace ImGuiMCP {
     namespace ImGuiWindowSettingsManager {
 
         inline ImGuiWindowSettings* Create(void) {
-            using func_t = ImGuiWindowSettings* (*)();
+            using func_t = ImGuiWindowSettings * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindowSettings_ImGuiWindowSettings");
             return func();
         }
@@ -8637,7 +8657,7 @@ namespace ImGuiMCP {
     namespace ImGuiSettingsHandlerManager {
 
         inline ImGuiSettingsHandler* Create(void) {
-            using func_t = ImGuiSettingsHandler* (*)();
+            using func_t = ImGuiSettingsHandler * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiSettingsHandler_ImGuiSettingsHandler");
             return func();
         }
@@ -8650,7 +8670,7 @@ namespace ImGuiMCP {
     namespace ImGuiDebugAllocInfoManager {
 
         inline ImGuiDebugAllocInfo* Create(void) {
-            using func_t = ImGuiDebugAllocInfo* (*)();
+            using func_t = ImGuiDebugAllocInfo * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiDebugAllocInfo_ImGuiDebugAllocInfo");
             return func();
         }
@@ -8663,7 +8683,7 @@ namespace ImGuiMCP {
     namespace ImGuiStackLevelInfoManager {
 
         inline ImGuiStackLevelInfo* Create(void) {
-            using func_t = ImGuiStackLevelInfo* (*)();
+            using func_t = ImGuiStackLevelInfo * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiStackLevelInfo_ImGuiStackLevelInfo");
             return func();
         }
@@ -8675,7 +8695,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiIDStackToolManager {
         inline ImGuiIDStackTool* Create(void) {
-            using func_t = ImGuiIDStackTool* (*)();
+            using func_t = ImGuiIDStackTool * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiIDStackTool_ImGuiIDStackTool");
             return func();
         }
@@ -8688,7 +8708,7 @@ namespace ImGuiMCP {
     namespace ImGuiContextHookManager {
 
         inline ImGuiContextHook* Create(void) {
-            using func_t = ImGuiContextHook* (*)();
+            using func_t = ImGuiContextHook * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiContextHook_ImGuiContextHook");
             return func();
         }
@@ -8701,7 +8721,7 @@ namespace ImGuiMCP {
     namespace ImGuiContextManager {
 
         inline ImGuiContext* Create(ImFontAtlas* shared_font_atlas) {
-            using func_t = ImGuiContext* (*)(ImFontAtlas*);
+            using func_t = ImGuiContext * (*)(ImFontAtlas*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiContext_ImGuiContext");
             return func(shared_font_atlas);
         }
@@ -8714,7 +8734,7 @@ namespace ImGuiMCP {
     namespace ImGuiWindowManager {
 
         inline ImGuiWindow* Create(ImGuiContext* context, const char* name) {
-            using func_t = ImGuiWindow* (*)(ImGuiContext*, const char*);
+            using func_t = ImGuiWindow * (*)(ImGuiContext*, const char*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindow_ImGuiWindow");
             return func(context, name);
         }
@@ -8724,22 +8744,22 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiID GetID_Str(ImGuiWindow* self, const char* str, const char* str_end) {
-            using func_t = ImGuiID (*)(ImGuiWindow*, const char*, const char*);
+            using func_t = ImGuiID(*)(ImGuiWindow*, const char*, const char*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindow_GetID_Str");
             return func(self, str, str_end);
         }
         inline ImGuiID GetID_Ptr(ImGuiWindow* self, const void* ptr) {
-            using func_t = ImGuiID (*)(ImGuiWindow*, const void*);
+            using func_t = ImGuiID(*)(ImGuiWindow*, const void*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindow_GetID_Ptr");
             return func(self, ptr);
         }
         inline ImGuiID GetID_Int(ImGuiWindow* self, int n) {
-            using func_t = ImGuiID (*)(ImGuiWindow*, int);
+            using func_t = ImGuiID(*)(ImGuiWindow*, int);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindow_GetID_Int");
             return func(self, n);
         }
         inline ImGuiID GetIDFromRectangle(ImGuiWindow* self, const ImRect r_abs) {
-            using func_t = ImGuiID (*)(ImGuiWindow*, const ImRect);
+            using func_t = ImGuiID(*)(ImGuiWindow*, const ImRect);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiWindow_GetIDFromRectangle");
             return func(self, r_abs);
         }
@@ -8773,7 +8793,7 @@ namespace ImGuiMCP {
     namespace ImGuiTabItemManager {
 
         inline ImGuiTabItem* Create(void) {
-            using func_t = ImGuiTabItem* (*)();
+            using func_t = ImGuiTabItem * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTabItem_ImGuiTabItem");
             return func();
         }
@@ -8785,7 +8805,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTabBarManager {
         inline ImGuiTabBar* Create(void) {
-            using func_t = ImGuiTabBar* (*)();
+            using func_t = ImGuiTabBar * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTabBar_ImGuiTabBar");
             return func();
         }
@@ -8797,7 +8817,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableColumnManager {
         inline ImGuiTableColumn* Create(void) {
-            using func_t = ImGuiTableColumn* (*)();
+            using func_t = ImGuiTableColumn * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableColumn_ImGuiTableColumn");
             return func();
         }
@@ -8809,7 +8829,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableInstanceDataManager {
         inline ImGuiTableInstanceData* Create(void) {
-            using func_t = ImGuiTableInstanceData* (*)();
+            using func_t = ImGuiTableInstanceData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableInstanceData_ImGuiTableInstanceData");
             return func();
         }
@@ -8821,7 +8841,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableManager {
         inline ImGuiTable* Create(void) {
-            using func_t = ImGuiTable* (*)();
+            using func_t = ImGuiTable * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTable_ImGuiTable");
             return func();
         }
@@ -8833,7 +8853,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableTempDataManager {
         inline ImGuiTableTempData* Create(void) {
-            using func_t = ImGuiTableTempData* (*)();
+            using func_t = ImGuiTableTempData * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableTempData_ImGuiTableTempData");
             return func();
         }
@@ -8845,7 +8865,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableColumnSettingsManager {
         inline ImGuiTableColumnSettings* Create(void) {
-            using func_t = ImGuiTableColumnSettings* (*)();
+            using func_t = ImGuiTableColumnSettings * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableColumnSettings_ImGuiTableColumnSettings");
             return func();
         }
@@ -8857,7 +8877,7 @@ namespace ImGuiMCP {
     }
     namespace ImGuiTableSettingsManager {
         inline ImGuiTableSettings* Create(void) {
-            using func_t = ImGuiTableSettings* (*)();
+            using func_t = ImGuiTableSettings * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableSettings_ImGuiTableSettings");
             return func();
         }
@@ -8867,28 +8887,28 @@ namespace ImGuiMCP {
             return func(self);
         }
         inline ImGuiTableColumnSettings* GetColumnSettings(ImGuiTableSettings* self) {
-            using func_t = ImGuiTableColumnSettings* (*)(ImGuiTableSettings*);
+            using func_t = ImGuiTableColumnSettings * (*)(ImGuiTableSettings*);
             func_t func = GetMenuFrameworkFunction<func_t>("ImGuiTableSettings_GetColumnSettings");
             return func(self);
         }
     }
     inline ImGuiWindow* GetCurrentWindowRead() {
-        using func_t = ImGuiWindow* (*)();
+        using func_t = ImGuiWindow * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentWindowRead");
         return func();
     }
     inline ImGuiWindow* GetCurrentWindow() {
-        using func_t = ImGuiWindow* (*)();
+        using func_t = ImGuiWindow * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentWindow");
         return func();
     }
     inline ImGuiWindow* FindWindowByID(ImGuiID id) {
-        using func_t = ImGuiWindow* (*)(ImGuiID);
+        using func_t = ImGuiWindow * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindWindowByID");
         return func(id);
     }
     inline ImGuiWindow* FindWindowByName(const char* name) {
-        using func_t = ImGuiWindow* (*)(const char*);
+        using func_t = ImGuiWindow * (*)(const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindWindowByName");
         return func(name);
     }
@@ -9016,7 +9036,7 @@ namespace ImGuiMCP {
         return func(window);
     }
     inline ImGuiWindow* FindBottomMostVisibleWindowWithinBeginStack(ImGuiWindow* window) {
-        using func_t = ImGuiWindow* (*)(ImGuiWindow*);
+        using func_t = ImGuiWindow * (*)(ImGuiWindow*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindBottomMostVisibleWindowWithinBeginStack");
         return func(window);
     }
@@ -9031,12 +9051,12 @@ namespace ImGuiMCP {
         return func(font);
     }
     inline ImFont* GetDefaultFont() {
-        using func_t = ImFont* (*)();
+        using func_t = ImFont * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetDefaultFont");
         return func();
     }
     inline ImDrawList* GetForegroundDrawList(ImGuiWindow* window) {
-        using func_t = ImDrawList* (*)(ImGuiWindow*);
+        using func_t = ImDrawList * (*)(ImGuiWindow*);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetForegroundDrawList_WindowPtr");
         return func(window);
     }
@@ -9091,7 +9111,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID AddContextHook(ImGuiContext* context, const ImGuiContextHook* hook) {
-        using func_t = ImGuiID (*)(ImGuiContext*, const ImGuiContextHook*);
+        using func_t = ImGuiID(*)(ImGuiContext*, const ImGuiContextHook*);
         func_t func = GetMenuFrameworkFunction<func_t>("igAddContextHook");
         return func(context, hook);
     }
@@ -9136,7 +9156,7 @@ namespace ImGuiMCP {
         return func(viewport);
     }
     inline ImGuiViewportP* FindHoveredViewportFromPlatformWindowStack(const ImVec2 mouse_platform_pos) {
-        using func_t = ImGuiViewportP* (*)(const ImVec2);
+        using func_t = ImGuiViewportP * (*)(const ImVec2);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindHoveredViewportFromPlatformWindowStack");
         return func(mouse_platform_pos);
     }
@@ -9166,22 +9186,22 @@ namespace ImGuiMCP {
         return func(type_name);
     }
     inline ImGuiSettingsHandler* FindSettingsHandler(const char* type_name) {
-        using func_t = ImGuiSettingsHandler* (*)(const char*);
+        using func_t = ImGuiSettingsHandler * (*)(const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindSettingsHandler");
         return func(type_name);
     }
     inline ImGuiWindowSettings* CreateNewWindowSettings(const char* name) {
-        using func_t = ImGuiWindowSettings* (*)(const char*);
+        using func_t = ImGuiWindowSettings * (*)(const char*);
         func_t func = GetMenuFrameworkFunction<func_t>("igCreateNewWindowSettings");
         return func(name);
     }
     inline ImGuiWindowSettings* FindWindowSettingsByID(ImGuiID id) {
-        using func_t = ImGuiWindowSettings* (*)(ImGuiID);
+        using func_t = ImGuiWindowSettings * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindWindowSettingsByID");
         return func(id);
     }
     inline ImGuiWindowSettings* FindWindowSettingsByWindow(ImGuiWindow* window) {
-        using func_t = ImGuiWindowSettings* (*)(ImGuiWindow*);
+        using func_t = ImGuiWindowSettings * (*)(ImGuiWindow*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindWindowSettingsByWindow");
         return func(window);
     }
@@ -9243,22 +9263,22 @@ namespace ImGuiMCP {
         return func(window, rect);
     }
     inline ImGuiItemStatusFlags GetItemStatusFlags() {
-        using func_t = ImGuiItemStatusFlags (*)();
+        using func_t = ImGuiItemStatusFlags(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetItemStatusFlags");
         return func();
     }
     inline ImGuiItemFlags GetItemFlags() {
-        using func_t = ImGuiItemFlags (*)();
+        using func_t = ImGuiItemFlags(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetItemFlags");
         return func();
     }
     inline ImGuiID GetActiveID() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetActiveID");
         return func();
     }
     inline ImGuiID GetFocusID() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetFocusID");
         return func();
     }
@@ -9278,7 +9298,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID GetHoveredID() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetHoveredID");
         return func();
     }
@@ -9303,12 +9323,12 @@ namespace ImGuiMCP {
         return func(id);
     }
     inline ImGuiID GetIDWithSeed(const char* str_id_begin, const char* str_id_end, ImGuiID seed) {
-        using func_t = ImGuiID (*)(const char*, const char*, ImGuiID);
+        using func_t = ImGuiID(*)(const char*, const char*, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetIDWithSeed_Str");
         return func(str_id_begin, str_id_end, seed);
     }
     inline ImGuiID GetIDWithSeed(int n, ImGuiID seed) {
-        using func_t = ImGuiID (*)(int, ImGuiID);
+        using func_t = ImGuiID(*)(int, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetIDWithSeed_Int");
         return func(n, seed);
     }
@@ -9479,17 +9499,17 @@ namespace ImGuiMCP {
         return out;
     }
     inline ImGuiWindow* GetTopMostPopupModal() {
-        using func_t = ImGuiWindow* (*)();
+        using func_t = ImGuiWindow * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetTopMostPopupModal");
         return func();
     }
     inline ImGuiWindow* GetTopMostAndVisiblePopupModal() {
-        using func_t = ImGuiWindow* (*)();
+        using func_t = ImGuiWindow * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetTopMostAndVisiblePopupModal");
         return func();
     }
     inline ImGuiWindow* FindBlockingModal(ImGuiWindow* window) {
-        using func_t = ImGuiWindow* (*)(ImGuiWindow*);
+        using func_t = ImGuiWindow * (*)(ImGuiWindow*);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindBlockingModal");
         return func(window);
     }
@@ -9673,22 +9693,22 @@ namespace ImGuiMCP {
         return func(key);
     }
     inline ImGuiKeyChord FixupKeyChord(ImGuiKeyChord key_chord) {
-        using func_t = ImGuiKeyChord (*)(ImGuiKeyChord);
+        using func_t = ImGuiKeyChord(*)(ImGuiKeyChord);
         func_t func = GetMenuFrameworkFunction<func_t>("igFixupKeyChord");
         return func(key_chord);
     }
     inline ImGuiKey ConvertSingleModFlagToKey(ImGuiKey key) {
-        using func_t = ImGuiKey (*)(ImGuiKey);
+        using func_t = ImGuiKey(*)(ImGuiKey);
         func_t func = GetMenuFrameworkFunction<func_t>("igConvertSingleModFlagToKey");
         return func(key);
     }
     inline ImGuiKeyData* GetKeyData(ImGuiContext* ctx, ImGuiKey key) {
-        using func_t = ImGuiKeyData* (*)(ImGuiContext*, ImGuiKey);
+        using func_t = ImGuiKeyData * (*)(ImGuiContext*, ImGuiKey);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetKeyData_ContextPtr");
         return func(ctx, key);
     }
     inline ImGuiKeyData* GetKeyData(ImGuiKey key) {
-        using func_t = ImGuiKeyData* (*)(ImGuiKey);
+        using func_t = ImGuiKeyData * (*)(ImGuiKey);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetKeyData_Key");
         return func(key);
     }
@@ -9698,7 +9718,7 @@ namespace ImGuiMCP {
         return func(key_chord);
     }
     inline ImGuiKey MouseButtonToKey(ImGuiMouseButton button) {
-        using func_t = ImGuiKey (*)(ImGuiMouseButton);
+        using func_t = ImGuiKey(*)(ImGuiMouseButton);
         func_t func = GetMenuFrameworkFunction<func_t>("igMouseButtonToKey");
         return func(button);
     }
@@ -9745,7 +9765,7 @@ namespace ImGuiMCP {
         return func(dir);
     }
     inline ImGuiID GetKeyOwner(ImGuiKey key) {
-        using func_t = ImGuiID (*)(ImGuiKey);
+        using func_t = ImGuiID(*)(ImGuiKey);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetKeyOwner");
         return func(key);
     }
@@ -9770,7 +9790,7 @@ namespace ImGuiMCP {
         return func(key, owner_id);
     }
     inline ImGuiKeyOwnerData* GetKeyOwnerData(ImGuiContext* ctx, ImGuiKey key) {
-        using func_t = ImGuiKeyOwnerData* (*)(ImGuiContext*, ImGuiKey);
+        using func_t = ImGuiKeyOwnerData * (*)(ImGuiContext*, ImGuiKey);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetKeyOwnerData");
         return func(ctx, key);
     }
@@ -9830,7 +9850,7 @@ namespace ImGuiMCP {
         return func(key_chord, owner_id);
     }
     inline ImGuiKeyRoutingData* GetShortcutRoutingData(ImGuiKeyChord key_chord) {
-        using func_t = ImGuiKeyRoutingData* (*)(ImGuiKeyChord);
+        using func_t = ImGuiKeyRoutingData * (*)(ImGuiKeyChord);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetShortcutRoutingData");
         return func(key_chord);
     }
@@ -9870,7 +9890,7 @@ namespace ImGuiMCP {
         return func(ctx);
     }
     inline ImGuiID DockContextGenNodeID(ImGuiContext* ctx) {
-        using func_t = ImGuiID (*)(ImGuiContext*);
+        using func_t = ImGuiID(*)(ImGuiContext*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockContextGenNodeID");
         return func(ctx);
     }
@@ -9900,13 +9920,13 @@ namespace ImGuiMCP {
         return func(ctx, node);
     }
     inline bool DockContextCalcDropPosForDocking(ImGuiWindow* target, ImGuiDockNode* target_node, ImGuiWindow* payload_window, ImGuiDockNode* payload_node, ImGuiDir split_dir, bool split_outer,
-                                                 ImVec2* out_pos) {
+        ImVec2* out_pos) {
         using func_t = bool (*)(ImGuiWindow*, ImGuiDockNode*, ImGuiWindow*, ImGuiDockNode*, ImGuiDir, bool, ImVec2*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockContextCalcDropPosForDocking");
         return func(target, target_node, payload_window, payload_node, split_dir, split_outer, out_pos);
     }
     inline ImGuiDockNode* DockContextFindNodeByID(ImGuiContext* ctx, ImGuiID id) {
-        using func_t = ImGuiDockNode* (*)(ImGuiContext*, ImGuiID);
+        using func_t = ImGuiDockNode * (*)(ImGuiContext*, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockContextFindNodeByID");
         return func(ctx, id);
     }
@@ -9926,7 +9946,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiDockNode* DockNodeGetRootNode(ImGuiDockNode* node) {
-        using func_t = ImGuiDockNode* (*)(ImGuiDockNode*);
+        using func_t = ImGuiDockNode * (*)(ImGuiDockNode*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockNodeGetRootNode");
         return func(node);
     }
@@ -9941,12 +9961,12 @@ namespace ImGuiMCP {
         return func(node);
     }
     inline ImGuiID DockNodeGetWindowMenuButtonId(const ImGuiDockNode* node) {
-        using func_t = ImGuiID (*)(const ImGuiDockNode*);
+        using func_t = ImGuiID(*)(const ImGuiDockNode*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockNodeGetWindowMenuButtonId");
         return func(node);
     }
     inline ImGuiDockNode* GetWindowDockNode() {
-        using func_t = ImGuiDockNode* (*)();
+        using func_t = ImGuiDockNode * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowDockNode");
         return func();
     }
@@ -9981,17 +10001,17 @@ namespace ImGuiMCP {
         return func(window_name, node_id);
     }
     inline ImGuiDockNode* DockBuilderGetNode(ImGuiID node_id) {
-        using func_t = ImGuiDockNode* (*)(ImGuiID);
+        using func_t = ImGuiDockNode * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockBuilderGetNode");
         return func(node_id);
     }
     inline ImGuiDockNode* DockBuilderGetCentralNode(ImGuiID node_id) {
-        using func_t = ImGuiDockNode* (*)(ImGuiID);
+        using func_t = ImGuiDockNode * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockBuilderGetCentralNode");
         return func(node_id);
     }
     inline ImGuiID DockBuilderAddNode(ImGuiID node_id, ImGuiDockNodeFlags flags) {
-        using func_t = ImGuiID (*)(ImGuiID, ImGuiDockNodeFlags);
+        using func_t = ImGuiID(*)(ImGuiID, ImGuiDockNodeFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockBuilderAddNode");
         return func(node_id, flags);
     }
@@ -10021,7 +10041,7 @@ namespace ImGuiMCP {
         return func(node_id, size);
     }
     inline ImGuiID DockBuilderSplitNode(ImGuiID node_id, ImGuiDir split_dir, float size_ratio_for_node_at_dir, ImGuiID* out_id_at_dir, ImGuiID* out_id_at_opposite_dir) {
-        using func_t = ImGuiID (*)(ImGuiID, ImGuiDir, float, ImGuiID*, ImGuiID*);
+        using func_t = ImGuiID(*)(ImGuiID, ImGuiDir, float, ImGuiID*, ImGuiID*);
         func_t func = GetMenuFrameworkFunction<func_t>("igDockBuilderSplitNode");
         return func(node_id, split_dir, size_ratio_for_node_at_dir, out_id_at_dir, out_id_at_opposite_dir);
     }
@@ -10056,7 +10076,7 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID GetCurrentFocusScope() {
-        using func_t = ImGuiID (*)();
+        using func_t = ImGuiID(*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentFocusScope");
         return func();
     }
@@ -10086,7 +10106,7 @@ namespace ImGuiMCP {
         return func(bb, item_clip_rect);
     }
     inline ImGuiTypingSelectRequest* GetTypingSelectRequest(ImGuiTypingSelectFlags flags) {
-        using func_t = ImGuiTypingSelectRequest* (*)(ImGuiTypingSelectFlags);
+        using func_t = ImGuiTypingSelectRequest * (*)(ImGuiTypingSelectFlags);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetTypingSelectRequest");
         return func(flags);
     }
@@ -10136,12 +10156,12 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiID GetColumnsID(const char* str_id, int count) {
-        using func_t = ImGuiID (*)(const char*, int);
+        using func_t = ImGuiID(*)(const char*, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetColumnsID");
         return func(str_id, count);
     }
     inline ImGuiOldColumns* FindOrCreateColumns(ImGuiWindow* window, ImGuiID id) {
-        using func_t = ImGuiOldColumns* (*)(ImGuiWindow*, ImGuiID);
+        using func_t = ImGuiOldColumns * (*)(ImGuiWindow*, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igFindOrCreateColumns");
         return func(window, id);
     }
@@ -10206,12 +10226,12 @@ namespace ImGuiMCP {
         return func(row_id, angle, max_label_width, data, data_count);
     }
     inline ImGuiTable* GetCurrentTable() {
-        using func_t = ImGuiTable* (*)();
+        using func_t = ImGuiTable * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentTable");
         return func();
     }
     inline ImGuiTable* TableFindByID(ImGuiID id) {
-        using func_t = ImGuiTable* (*)(ImGuiID);
+        using func_t = ImGuiTable * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableFindByID");
         return func(id);
     }
@@ -10271,12 +10291,12 @@ namespace ImGuiMCP {
         return func(table);
     }
     inline ImGuiTableInstanceData* TableGetInstanceData(ImGuiTable* table, int instance_no) {
-        using func_t = ImGuiTableInstanceData* (*)(ImGuiTable*, int);
+        using func_t = ImGuiTableInstanceData * (*)(ImGuiTable*, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetInstanceData");
         return func(table, instance_no);
     }
     inline ImGuiID TableGetInstanceID(ImGuiTable* table, int instance_no) {
-        using func_t = ImGuiID (*)(ImGuiTable*, int);
+        using func_t = ImGuiID(*)(ImGuiTable*, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetInstanceID");
         return func(table, instance_no);
     }
@@ -10291,7 +10311,7 @@ namespace ImGuiMCP {
         return func(table);
     }
     inline ImGuiSortDirection TableGetColumnNextSortDirection(ImGuiTableColumn* column) {
-        using func_t = ImGuiSortDirection (*)(ImGuiTableColumn*);
+        using func_t = ImGuiSortDirection(*)(ImGuiTableColumn*);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetColumnNextSortDirection");
         return func(column);
     }
@@ -10338,7 +10358,7 @@ namespace ImGuiMCP {
         return func(table, column_n);
     }
     inline ImGuiID TableGetColumnResizeID(ImGuiTable* table, int column_n, int instance_no) {
-        using func_t = ImGuiID (*)(ImGuiTable*, int, int);
+        using func_t = ImGuiID(*)(ImGuiTable*, int, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetColumnResizeID");
         return func(table, column_n, instance_no);
     }
@@ -10393,7 +10413,7 @@ namespace ImGuiMCP {
         return func(table);
     }
     inline ImGuiTableSettings* TableGetBoundSettings(ImGuiTable* table) {
-        using func_t = ImGuiTableSettings* (*)(ImGuiTable*);
+        using func_t = ImGuiTableSettings * (*)(ImGuiTable*);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableGetBoundSettings");
         return func(table);
     }
@@ -10403,17 +10423,17 @@ namespace ImGuiMCP {
         return func();
     }
     inline ImGuiTableSettings* TableSettingsCreate(ImGuiID id, int columns_count) {
-        using func_t = ImGuiTableSettings* (*)(ImGuiID, int);
+        using func_t = ImGuiTableSettings * (*)(ImGuiID, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableSettingsCreate");
         return func(id, columns_count);
     }
     inline ImGuiTableSettings* TableSettingsFindByID(ImGuiID id) {
-        using func_t = ImGuiTableSettings* (*)(ImGuiID);
+        using func_t = ImGuiTableSettings * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igTableSettingsFindByID");
         return func(id);
     }
     inline ImGuiTabBar* GetCurrentTabBar() {
-        using func_t = ImGuiTabBar* (*)();
+        using func_t = ImGuiTabBar * (*)();
         func_t func = GetMenuFrameworkFunction<func_t>("igGetCurrentTabBar");
         return func();
     }
@@ -10423,22 +10443,22 @@ namespace ImGuiMCP {
         return func(tab_bar, bb, flags);
     }
     inline ImGuiTabItem* TabBarFindTabByID(ImGuiTabBar* tab_bar, ImGuiID tab_id) {
-        using func_t = ImGuiTabItem* (*)(ImGuiTabBar*, ImGuiID);
+        using func_t = ImGuiTabItem * (*)(ImGuiTabBar*, ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igTabBarFindTabByID");
         return func(tab_bar, tab_id);
     }
     inline ImGuiTabItem* TabBarFindTabByOrder(ImGuiTabBar* tab_bar, int order) {
-        using func_t = ImGuiTabItem* (*)(ImGuiTabBar*, int);
+        using func_t = ImGuiTabItem * (*)(ImGuiTabBar*, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igTabBarFindTabByOrder");
         return func(tab_bar, order);
     }
     inline ImGuiTabItem* TabBarFindMostRecentlySelectedTabForActiveWindow(ImGuiTabBar* tab_bar) {
-        using func_t = ImGuiTabItem* (*)(ImGuiTabBar*);
+        using func_t = ImGuiTabItem * (*)(ImGuiTabBar*);
         func_t func = GetMenuFrameworkFunction<func_t>("igTabBarFindMostRecentlySelectedTabForActiveWindow");
         return func(tab_bar);
     }
     inline ImGuiTabItem* TabBarGetCurrentTab(ImGuiTabBar* tab_bar) {
-        using func_t = ImGuiTabItem* (*)(ImGuiTabBar*);
+        using func_t = ImGuiTabItem * (*)(ImGuiTabBar*);
         func_t func = GetMenuFrameworkFunction<func_t>("igTabBarGetCurrentTab");
         return func(tab_bar);
     }
@@ -10512,7 +10532,7 @@ namespace ImGuiMCP {
         return func(draw_list, bb, flags, col);
     }
     inline void TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect bb, ImGuiTabItemFlags flags, ImVec2 frame_padding, const char* label, ImGuiID tab_id, ImGuiID close_button_id,
-                                           bool is_contents_visible, bool* out_just_closed, bool* out_text_clipped) {
+        bool is_contents_visible, bool* out_just_closed, bool* out_text_clipped) {
         using func_t = void (*)(ImDrawList*, const ImRect, ImGuiTabItemFlags, ImVec2, const char*, ImGuiID, ImGuiID, bool, bool*, bool*);
         func_t func = GetMenuFrameworkFunction<func_t>("igTabItemLabelAndCloseButton");
         return func(draw_list, bb, flags, frame_padding, label, tab_id, close_button_id, is_contents_visible, out_just_closed, out_text_clipped);
@@ -10533,13 +10553,13 @@ namespace ImGuiMCP {
         return func(pos_min, pos_max, text, text_end, text_size_if_known, align, clip_rect);
     }
     inline void RenderTextClippedEx(ImDrawList* draw_list, const ImVec2 pos_min, const ImVec2 pos_max, const char* text, const char* text_end, const ImVec2* text_size_if_known, const ImVec2 align,
-                                    const ImRect* clip_rect) {
+        const ImRect* clip_rect) {
         using func_t = void (*)(ImDrawList*, const ImVec2, const ImVec2, const char*, const char*, const ImVec2*, const ImVec2, const ImRect*);
         func_t func = GetMenuFrameworkFunction<func_t>("igRenderTextClippedEx");
         return func(draw_list, pos_min, pos_max, text, text_end, text_size_if_known, align, clip_rect);
     }
     inline void RenderTextEllipsis(ImDrawList* draw_list, const ImVec2 pos_min, const ImVec2 pos_max, float clip_max_x, float ellipsis_max_x, const char* text, const char* text_end,
-                                   const ImVec2* text_size_if_known) {
+        const ImVec2* text_size_if_known) {
         using func_t = void (*)(ImDrawList*, const ImVec2, const ImVec2, float, float, const char*, const char*, const ImVec2*);
         func_t func = GetMenuFrameworkFunction<func_t>("igRenderTextEllipsis");
         return func(draw_list, pos_min, pos_max, clip_max_x, ellipsis_max_x, text, text_end, text_size_if_known);
@@ -10610,7 +10630,7 @@ namespace ImGuiMCP {
         return func(draw_list, outer, inner, col, rounding);
     }
     inline ImDrawFlags CalcRoundingFlagsForRectInRect(const ImRect r_in, const ImRect r_outer, float threshold) {
-        using func_t = ImDrawFlags (*)(const ImRect, const ImRect, float);
+        using func_t = ImDrawFlags(*)(const ImRect, const ImRect, float);
         func_t func = GetMenuFrameworkFunction<func_t>("igCalcRoundingFlagsForRectInRect");
         return func(r_in, r_outer, threshold);
     }
@@ -10682,17 +10702,17 @@ namespace ImGuiMCP {
         return out;
     }
     inline ImGuiID GetWindowScrollbarID(ImGuiWindow* window, ImGuiAxis axis) {
-        using func_t = ImGuiID (*)(ImGuiWindow*, ImGuiAxis);
+        using func_t = ImGuiID(*)(ImGuiWindow*, ImGuiAxis);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowScrollbarID");
         return func(window, axis);
     }
     inline ImGuiID GetWindowResizeCornerID(ImGuiWindow* window, int n) {
-        using func_t = ImGuiID (*)(ImGuiWindow*, int);
+        using func_t = ImGuiID(*)(ImGuiWindow*, int);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowResizeCornerID");
         return func(window, n);
     }
     inline ImGuiID GetWindowResizeBorderID(ImGuiWindow* window, ImGuiDir dir) {
-        using func_t = ImGuiID (*)(ImGuiWindow*, ImGuiDir);
+        using func_t = ImGuiID(*)(ImGuiWindow*, ImGuiDir);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetWindowResizeBorderID");
         return func(window, dir);
     }
@@ -10712,7 +10732,7 @@ namespace ImGuiMCP {
         return func(bb, id, data_type, p_v, p_min, p_max, format, flags, out_grab_bb);
     }
     inline bool SplitterBehavior(const ImRect bb, ImGuiID id, ImGuiAxis axis, float* size1, float* size2, float min_size1, float min_size2, float hover_extend, float hover_visibility_delay,
-                                 ImU32 bg_col) {
+        ImU32 bg_col) {
         using func_t = bool (*)(const ImRect, ImGuiID, ImGuiAxis, float*, float*, float, float, float, float, ImU32);
         func_t func = GetMenuFrameworkFunction<func_t>("igSplitterBehavior");
         return func(bb, id, axis, size1, size2, min_size1, min_size2, hover_extend, hover_visibility_delay, bg_col);
@@ -10798,7 +10818,7 @@ namespace ImGuiMCP {
         return func(id);
     }
     inline ImGuiInputTextState* GetInputTextState(ImGuiID id) {
-        using func_t = ImGuiInputTextState* (*)(ImGuiID);
+        using func_t = ImGuiInputTextState * (*)(ImGuiID);
         func_t func = GetMenuFrameworkFunction<func_t>("igGetInputTextState");
         return func(id);
     }
@@ -10823,7 +10843,7 @@ namespace ImGuiMCP {
         return func(ref_col, flags);
     }
     inline int PlotEx(ImGuiPlotType plot_type, const char* label, float (*values_getter)(void* data, int idx), void* data, int values_count, int values_offset, const char* overlay_text,
-                      float scale_min, float scale_max, const ImVec2 size_arg) {
+        float scale_min, float scale_max, const ImVec2 size_arg) {
         using func_t = int (*)(ImGuiPlotType, const char*, float (*)(void*, int), void*, int, int, const char*, float, float, const ImVec2);
         func_t func = GetMenuFrameworkFunction<func_t>("igPlotEx");
         return func(plot_type, label, values_getter, data, values_count, values_offset, overlay_text, scale_min, scale_max, size_arg);
@@ -11130,7 +11150,7 @@ namespace ImGuiMCP {
     namespace ImVector_ImWcharManager {
 
         inline ImVector_ImWchar* Create() {
-            using func_t = ImVector_ImWchar* (*)();
+            using func_t = ImVector_ImWchar * (*)();
             func_t func = GetMenuFrameworkFunction<func_t>("ImVector_ImWchar_create");
             return func();
         }
@@ -11193,7 +11213,8 @@ namespace ImGuiMCPComponents {
         size_t pos = displayLabel.find("##");
         if (pos != std::string::npos) {
             ImGuiMCP::Text("%.*s", (int)pos, displayLabel.c_str());
-        } else {
+        }
+        else {
             ImGuiMCP::Text("%s", label);
         }
 

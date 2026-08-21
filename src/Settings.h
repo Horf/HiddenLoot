@@ -329,15 +329,32 @@ namespace Settings
         // Hardcoded safety net: Gunjar (Tutorial - Unbound) - Prevents quest progression blocker
         excludedNPCBaseIDs.push_back(0x0009B0AD);
 
-        // Guards from CC Alternative Armors - Steel Soldier
+       
         if (dataHandler) {
-            // Guard 1
+            // Guards from CC Alternative Armors - Steel Soldier
             if (auto ccGuard1 = dataHandler->LookupForm<RE::TESNPC>(0x81F, "ccbgssse058-ba_steel.esl")) {
                 excludedNPCBaseIDs.push_back(ccGuard1->GetFormID());
             }
-            // Guard 2
             if (auto ccGuard2 = dataHandler->LookupForm<RE::TESNPC>(0x820, "ccbgssse058-ba_steel.esl")) {
                 excludedNPCBaseIDs.push_back(ccGuard2->GetFormID());
+            }
+
+            // Quest NPC from CC Alternative Armors - Dwarven Mail (Urgnok)
+            if (auto ccUrgnok = dataHandler->LookupForm<RE::TESNPC>(0x81F, "ccbgssse062-ba_dwarvenmail.esl")) {
+                excludedNPCBaseIDs.push_back(ccUrgnok->GetFormID());
+            }
+
+            // Quest NPC from CC Alternative Armors - Dragon Plate (Bjormund)
+            if (auto ccBjormund = dataHandler->LookupForm<RE::TESNPC>(0x81C, "ccbgssse059-ba_dragonplate.esl")) {
+                excludedNPCBaseIDs.push_back(ccBjormund->GetFormID());
+            }
+
+            // Quest NPCs from CC Divine Crusader (Eigorn & Oren)
+            if (auto ccEigorn = dataHandler->LookupForm<RE::TESNPC>(0x825, "ccmtysse001-knightsofthenine.esl")) {
+                excludedNPCBaseIDs.push_back(ccEigorn->GetFormID());
+            }
+            if (auto ccOren = dataHandler->LookupForm<RE::TESNPC>(0x826, "ccmtysse001-knightsofthenine.esl")) {
+                excludedNPCBaseIDs.push_back(ccOren->GetFormID());
             }
         }
 
@@ -388,6 +405,16 @@ namespace Settings
                             logs::warn("Item Whitelist: Could not find item with EditorID '{}'", token);
                         }
                     }
+                }
+            }
+        }
+
+		// Whitelist items from Alternative Armors - Orcish Plate (ccbgssse057-ba_orcish.esl)
+        if (auto dataHandler = RE::TESDataHandler::GetSingleton()) {
+            std::vector<RE::FormID> ccOrcishQuestItems = { 0x83C, 0x83D, 0x83E, 0x83F };
+            for (auto localID : ccOrcishQuestItems) {
+                if (auto armor = dataHandler->LookupForm<RE::TESBoundObject>(localID, "ccbgssse057-ba_orcish.esl")) {
+                    whitelistedItemBaseIDs.push_back(armor->GetFormID());
                 }
             }
         }

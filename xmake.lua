@@ -3,7 +3,7 @@ includes("lib/commonlibsse-ng")
 
 -- set project constants
 set_project("HiddenLoot")
-set_version("1.3.0")
+set_version("1.3.1")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")
@@ -14,6 +14,8 @@ add_rules("plugin.vsxmake.autoupdate")
 
 -- define targets
 target("HiddenLoot")
+    add_deps("commonlibsse-ng")
+
     add_rules("commonlibsse-ng.plugin", {
         name = "HiddenLoot",
         author = "PRieST47",

@@ -264,8 +264,8 @@ namespace LootHook
             const auto player = RE::PlayerCharacter::GetSingleton();
             if (player) {
                 const auto& vrData = player->GetVRPlayerRuntimeData();
-                const uint32_t mainHand = vrData.isRightHandMainHand ? 1 : 0;
-                const uint32_t offHand = vrData.isRightHandMainHand ? 0 : 1;
+                const uint32_t mainHand = vrData->isRightHandMainHand ? 1 : 0;
+                const uint32_t offHand = vrData->isRightHandMainHand ? 0 : 1;
 
                 if (crosshair->grabPickRef[mainHand]) refPtr = crosshair->grabPickRef[mainHand].get();
                 else if (crosshair->grabPickRef[offHand]) refPtr = crosshair->grabPickRef[offHand].get();
