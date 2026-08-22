@@ -480,7 +480,7 @@ namespace Settings
 
             file << "[Blacklist]\n";
             file << "; Comma-separated list of EditorIDs for keywords or mod filenames that should ALWAYS hide an item.\n";
-            file << "; Example: sHideKeywords=IsJunk, FollowerArrowKeyword, MyMod.esp\n";
+            file << "; Example: sHideKeywords=WeapMaterialIron, FollowerArrowKeyword, MyMod.esp\n";
             file << "sHideKeywords=" << sHideKeywords << "\n\n\n";
 
 

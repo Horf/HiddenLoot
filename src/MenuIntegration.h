@@ -119,7 +119,7 @@ namespace MenuIntegration
             Settings::LoadGameData();
             changed = true;
         }
-        HelpMarker("Comma-separated list of EditorID keywords or mod filenames (e.g., IsJunk, MyMod.esp). Items with these keywords or from these mods will ALWAYS be hidden. Case-sensitive!");
+        HelpMarker("Comma-separated list of EditorID keywords or mod filenames (e.g., WeapMaterialIron, MyMod.esp). Items with these keywords or from these mods will ALWAYS be hidden. Case-sensitive!");
 
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("NPC Whitelist");
