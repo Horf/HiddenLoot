@@ -75,8 +75,9 @@
 #include <RE/T/TESAmmo.h>
 
 // ===== Project =====
-#include "Settings.h"
 #include "DeathTracker.h"
+#include "JunkIt.h"
+#include "Settings.h"
 
 namespace LootHook
 {
@@ -163,10 +164,10 @@ namespace LootHook
 
                         // Track modifier key state
                         if (key == static_cast<uint32_t>(Settings::iToggleModifierKey)) {
-                            _modifierHeld = (button->Value() > 0.0f);
+                            _modifierHeld = button->IsPressed();
                         }
                         // Check for main hotkey press
-                        else if (key == static_cast<uint32_t>(Settings::iToggleModifierKey) && button->IsDown()) {
+                        else if (key == static_cast<uint32_t>(Settings::iToggleHotkey) && button->IsDown()) {
                             bool modifierConditionMet = (Settings::iToggleModifierKey == 0) || _modifierHeld;
                             if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
@@ -612,8 +613,16 @@ namespace LootHook
             }
         }
 
-        // If the item type isn't configured to be hidden, allow it
-        if (!shouldHide) return true;
+        // Check if any item is marked by Junk It as junk
+        bool isJunkItCandidate = false;
+        if (Settings::bHideJunkItItems && JunkIt::API) {
+            if (JunkIt::API->IsAnyJunkForForm(a_this)) {
+                isJunkItCandidate = true;
+            }
+        }
+
+        // If the item type isn't configured to be hidden or marked as junk, allow it
+        if (!shouldHide && !isJunkItCandidate) return true;
 
         // From here on, 'targetRef' is guaranteed to be a valid owner from history
         auto actor = targetRef->As<RE::Actor>();
@@ -762,6 +771,7 @@ namespace LootHook
             bool isExtraEnchanted = false;
             bool isPlayerModified = false;
             bool foundInNPCInventory = false;
+            bool confirmedJunkIt = false;
 
             RE::TESObjectREFR* inventoryOwner = sourceActor ? sourceActor : targetRef;
 
@@ -771,6 +781,13 @@ namespace LootHook
                 for (auto* entry : *changes->entryList) {
                     if (entry && entry->object && entry->object->GetFormID() == a_this->GetFormID()) {
                         foundInNPCInventory = true;
+                        // Junk It detection for items marked as junk
+                        if (Settings::bHideJunkItItems && JunkIt::API) {
+                            if (JunkIt::API->IsJunk(entry)) {
+                                confirmedJunkIt = true;
+                            }
+                        }
+
                         if (entry->IsQuestObject()) isQuestObject = true;
                         if (entry->IsWorn()) isWorn = true;
                         // Check for individual enchanted items in the inventory if the setting is enabled
@@ -795,7 +812,15 @@ namespace LootHook
             }
 
 			// If the item wasn't found in the dynamic inventory changes, it might still be in the base container data (e.g. pre-looted corpse or static NPC inventory)
-            if (!foundInNPCInventory && ContainerHasItem(inventoryOwner, a_this, false)) foundInNPCInventory = true;
+            if (!foundInNPCInventory && ContainerHasItem(inventoryOwner, a_this, false)) {
+                foundInNPCInventory = true;
+
+                // Junk It fallback check
+                if (isJunkItCandidate) {
+                    confirmedJunkIt = true;
+                }
+
+            }
 
             // If an item is still rendered by QuickLoot but missing from inventory, hide it
             if (!foundInNPCInventory) {        
@@ -810,6 +835,15 @@ namespace LootHook
 
                 // Default to true for background scripts and spells
                 return true;
+            }
+
+			// If the item is after precise checks not marked for junk, allow it
+            if (!shouldHide && !confirmedJunkIt) {
+                return true;
+            }
+			// If the item is confirmed as junk, hide it
+            if (confirmedJunkIt) {
+                return false;
             }
 
             // Safety: Never hide Quest Items, specifically whitelisted enchanted gear or player-modified items (e.g. via tempering or enchanting)

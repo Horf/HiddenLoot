@@ -16,6 +16,9 @@
 #include "DeathTracker.h"
 #include "Settings.h"
 
+// ===== APIs =====
+#include "JunkIt.h"
+
 // Serialization Callbacks
 static void SaveCallback(SKSE::SerializationInterface* a_intfc) {
     LootHook::DeathTracker::GetSingleton()->Save(a_intfc);
@@ -45,9 +48,23 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
     Settings::LoadINI();
 	LootHook::InstallHooks();
+
     logs::info("Hooks installed and INI loaded. Waiting for Data Loaded event...");
-    auto messaging = SKSE::GetMessagingInterface();
-    messaging->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
+    
+    SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
+        
+        // Register Junk It API listener
+        if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
+            JunkIt::ListenForAPI([](SKSE::MessagingInterface::Message* api_msg) {
+                if (api_msg->type == JunkIt::kMessage_GetAPI) {
+                    if (!JunkIt::API) {
+                        JunkIt::API = static_cast<JunkIt::IAPI*>(api_msg->data);
+                        logs::info("Successfully loaded Junk It API version: {}", JunkIt::API->GetVersion());
+                    }
+                }
+            });
+        }
+        
         // Wait until all data forms (esp/esm) are loaded before caching forms
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
 			Settings::LoadGameData();

@@ -120,6 +120,9 @@ namespace Settings
     inline std::vector<std::string> whitelistedModsList;
     inline std::vector<std::string> blacklistedModsList;
 
+    // Junk It integration
+    inline bool bHideJunkItItems = false;
+
     // Helper function to remove leading/trailing whitespace
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
@@ -280,13 +283,14 @@ namespace Settings
                     else if (key == "iToggleModifierKey") {
                         iToggleModifierKey = static_cast<int>(ParseFloatSafe(value, 56.0f));
                     }
+                    else if (key == "bHideJunkItItems") bHideJunkItItems = isTrue;
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
                 }
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 42) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 43) Save();
     }
 
     inline void LoadGameData() {
@@ -469,6 +473,12 @@ namespace Settings
             file << "bApplyToPlayerKills=" << (bApplyToPlayerKills ? "true" : "false") << "\t; Killed by Player, Followers or Summons\n";
             file << "bApplyToNPCKills=" << (bApplyToNPCKills ? "true" : "false") << "\t\t; Killed by other NPCs, Creatures, etc\n";
             file << "bApplyToPreDead=" << (bApplyToPreDead ? "true" : "false") << "\t\t; Corpses that were already dead when you found them\n\n\n";
+
+
+            file << "[Integration]\n";
+            file << "; If true, items marked as junk by the mod 'Junk It' will automatically be hidden.\n";
+            file << "; Requires Junk It 2.0.8 or newer.\n";
+            file << "bHideJunkItItems=" << (bHideJunkItItems ? "true" : "false") << "\n\n\n";
 
 
             file << "[Compatibility]\n";

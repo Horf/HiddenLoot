@@ -100,6 +100,11 @@ namespace MenuIntegration
         HelpMarker("If enabled, loot hiding rules apply to corpses that were already dead when you found them (Decoration/Quest corpses).");
 
         ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText("Mod Integration");
+        if (ImGuiMCPComponents::ToggleButton("Hide 'Junk It' Items", &Settings::bHideJunkItItems)) changed = true;
+        HelpMarker("If enabled, automatically hides any items you have marked as junk. (Requires Junk It version 2.0.8 or newer).");
+
+        ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText("Compatibility & Safety Nets");
         if (ImGuiMCPComponents::ToggleButton("Protect Player-Modified Gear", &Settings::bProtectPlayerModifiedGear)) changed = true;
         HelpMarker("If enabled, items that have been tempered, custom enchanted, or renamed by the player are permanently protected and will never be hidden. Disable this if mods like 'Vibrant Weapons' cause the hiding system to fail.");
