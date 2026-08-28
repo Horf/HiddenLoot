@@ -93,9 +93,10 @@ namespace Settings
     inline float fHideChanceWeapons = 100.0f;
     inline float fHideChanceClothing = 100.0f;
 
-    // skill-based scaling
+    // Skill-based scaling
     inline bool bEnableSkillScaling = false;
     inline float fMaxSkillHideReduction = 0.0f;
+    inline float fMaxSmithingHideReduction = 0.0f;
 
     // Corpse Filters
     inline bool bApplyToPlayerKills = true;
@@ -276,6 +277,9 @@ namespace Settings
                     else if (key == "fMaxSkillHideReduction") {
                         fMaxSkillHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
                     }
+					else if (key == "fMaxSmithingHideReduction") {
+						fMaxSmithingHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
+					}
 					else if (key == "bEnableHotkey") bEnableHotkey = isTrue;
                     else if (key == "iToggleHotkey") {
                         iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 45.0f));
@@ -290,7 +294,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 43) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 44) Save();
     }
 
     inline void LoadGameData() {
@@ -458,7 +462,9 @@ namespace Settings
             file << "; Dynamic reduction of hide chance based on player skill (e.g. Heavy Armor skill protects heavy armors).\n";
             file << "bEnableSkillScaling=" << (bEnableSkillScaling ? "true" : "false") << "\n";
             file << "; Maximum percentage reduction applied when the corresponding skill is at 100.\n";
-            file << "fMaxSkillHideReduction=" << fMaxSkillHideReduction << "\n\n\n";
+            file << "fMaxSkillHideReduction=" << fMaxSkillHideReduction << "\n";
+            file << "; Maximum percentage reduction applied when the Smithing skill is at 100 (Applies only to Weapons and Armor).\n";
+            file << "fMaxSmithingHideReduction=" << fMaxSmithingHideReduction << "\n\n\n";
 
 
             file << "[Hotkey]\n";

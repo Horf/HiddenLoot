@@ -73,6 +73,10 @@ namespace MenuIntegration
             ImGuiMCP::SliderFloat("Max Skill Reduction (%)", &Settings::fMaxSkillHideReduction, 0.0f, 100.0f, "%.1f");
             if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
             HelpMarker("The maximum percentage the hide chance is reduced when the corresponding skill is at level 100.");
+
+            ImGuiMCP::SliderFloat("Max Smithing Reduction (%)", &Settings::fMaxSmithingHideReduction, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            HelpMarker("The maximum percentage the hide chance is reduced when the Smithing skill is at level 100. This stacks with the combat skill reduction but only applies to weapons, armors and shields.");
             ImGuiMCP::Unindent(15.0f);
         }
 

@@ -63,6 +63,7 @@
 #include <RE/P/ProcessLists.h>
 
 #include <RE/S/ScrollItem.h>
+#include <RE/S/SendHUDMessage.h>
 
 #include <RE/T/TESBoundObject.h>
 #include <RE/T/TESObjectREFR.h>
@@ -171,14 +172,11 @@ namespace LootHook
                             bool modifierConditionMet = (Settings::iToggleModifierKey == 0) || _modifierHeld;
                             if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
-                                auto console = RE::ConsoleLog::GetSingleton();
-                                if (console) {
-                                    if (Settings::bEnableMod) {
-                                        console->Print("Hidden Loot: Enabled");
-                                    }
-                                    else {
-                                        console->Print("Hidden Loot: Disabled");
-                                    }
+                                if (Settings::bEnableMod) {
+                                    RE::SendHUDMessage::ShowHUDMessage("Hidden Loot: Enabled");
+                                }
+                                else {
+                                    RE::SendHUDMessage::ShowHUDMessage("Hidden Loot: Disabled");
                                 }
                             }
                         }
@@ -419,6 +417,7 @@ namespace LootHook
 
         // variable for skill scaling
 		RE::ActorValue associatedSkill = RE::ActorValue::kNone;
+        bool isSmithable = false;
 
         // Check Blacklists first
         bool isBlacklisted = false;
@@ -553,6 +552,7 @@ namespace LootHook
                 associatedSkill = RE::ActorValue::kPickpocket;
             }
             else if (isWeapon) {
+                isSmithable = true;
                 shouldHide = Settings::bUnlootableWeapons;
                 requireWorn = Settings::bWeaponsWornOnly;
 
@@ -585,6 +585,7 @@ namespace LootHook
                 requireWorn = Settings::bJewelryWornOnly;
             }
             else if (isArmor) {
+                isSmithable = true;
                 if (isShield) {
                     shouldHide = Settings::bUnlootableArmorShield;
                 }
@@ -850,11 +851,22 @@ namespace LootHook
             if (isQuestObject || isExtraEnchanted || isPlayerModified)  return true;
 
             // skill hide chance reduction
-            if (Settings::bEnableSkillScaling && isPlayerLoaded && currentHideChance > 0.0f && associatedSkill != RE::ActorValue::kNone) {
-                float skillLevel = player->GetActorValue(associatedSkill);
-                float reduction = (std::clamp(skillLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSkillHideReduction;
-                currentHideChance -= reduction;
-                if (currentHideChance < 0.0f) currentHideChance = 0.0f;
+            if (Settings::bEnableSkillScaling && isPlayerLoaded && currentHideChance > 0.0f) {
+                float totalReduction = 0.0f;
+
+                if (associatedSkill != RE::ActorValue::kNone && Settings::fMaxSkillHideReduction > 0.0f) {
+                    float skillLevel = player->GetActorValue(associatedSkill);
+                    totalReduction += (std::clamp(skillLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSkillHideReduction;
+                }
+                if (isSmithable && Settings::fMaxSmithingHideReduction > 0.0f) {
+                    float smithingLevel = player->GetActorValue(RE::ActorValue::kSmithing);
+                    totalReduction += (std::clamp(smithingLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSmithingHideReduction;
+                }
+                
+                if (totalReduction > 0.0f) {
+                    currentHideChance -= totalReduction;
+                    if (currentHideChance < 0.0f) currentHideChance = 0.0f;
+                }
             }
             
 
