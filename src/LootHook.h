@@ -854,13 +854,15 @@ namespace LootHook
             if (Settings::bEnableSkillScaling && isPlayerLoaded && currentHideChance > 0.0f) {
                 float totalReduction = 0.0f;
 
-                if (associatedSkill != RE::ActorValue::kNone && Settings::fMaxSkillHideReduction > 0.0f) {
-                    float skillLevel = player->GetActorValue(associatedSkill);
-                    totalReduction += (std::clamp(skillLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSkillHideReduction;
-                }
-                if (isSmithable && Settings::fMaxSmithingHideReduction > 0.0f) {
-                    float smithingLevel = player->GetActorValue(RE::ActorValue::kSmithing);
-                    totalReduction += (std::clamp(smithingLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSmithingHideReduction;
+                if (auto avOwner = player->AsActorValueOwner()) {
+                    if (associatedSkill != RE::ActorValue::kNone && Settings::fMaxSkillHideReduction > 0.0f) {
+                        float skillLevel = avOwner->GetActorValue(associatedSkill);
+                        totalReduction += (std::clamp(skillLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSkillHideReduction;
+                    }
+                    if (isSmithable && Settings::fMaxSmithingHideReduction > 0.0f) {
+                        float smithingLevel = avOwner->GetActorValue(RE::ActorValue::kSmithing);
+                        totalReduction += (std::clamp(smithingLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSmithingHideReduction;
+                    }
                 }
                 
                 if (totalReduction > 0.0f) {
