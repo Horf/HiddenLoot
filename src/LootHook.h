@@ -10,9 +10,10 @@
 #include <unordered_map>
 #include <cstdarg>
 #include <string>
-#include <cctype>
 #include <string_view>
 #include <vector>
+
+#include <string.h>
 
 // ===== SKSE =====
 #include <SKSE/Logger.h>
@@ -39,7 +40,6 @@
 #include <RE/C/ContainerMenu.h>
 #include <RE/C/CraftingMenu.h>
 #include <RE/C/CrosshairPickData.h>
-#include <RE/C/ConsoleLog.h>
 
 #include <RE/E/ExtraAshPileRef.h>
 #include <RE/E/ExtraDataTypes.h>
@@ -387,11 +387,14 @@ namespace LootHook
 
         // Mod specific whitelist checks
         if (auto file = a_this->GetFile(0)) {
-            std::string modName(file->GetFilename());
-            std::transform(modName.begin(), modName.end(), modName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const char* modName = file->GetFilename().data();
+
+            auto CompareModName = [&](const std::string& listName) {
+                return _stricmp(modName, listName.c_str()) == 0;
+            };
 
             if (!Settings::whitelistedModsList.empty()) {
-                if (std::find(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), modName) != Settings::whitelistedModsList.end()) {
+                if (std::find_if(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), CompareModName) != Settings::whitelistedModsList.end()) {
                     return true;
                 }
             }
@@ -422,9 +425,12 @@ namespace LootHook
         // Check Blacklists first
         bool isBlacklisted = false;
         if (auto file = a_this->GetFile(0)) {
-            std::string modName(file->GetFilename());
-            std::transform(modName.begin(), modName.end(), modName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (std::find(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), modName) != Settings::blacklistedModsList.end()) {
+            const char* modName = file->GetFilename().data();
+            auto CompareModName = [&](const std::string& listName) {
+                return _stricmp(modName, listName.c_str()) == 0;
+            };
+
+            if (std::find_if(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), CompareModName) != Settings::blacklistedModsList.end()) {
                 isBlacklisted = true;
             }
         }
@@ -641,7 +647,7 @@ namespace LootHook
         if (actor) {
             // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
             auto npcBaseID = baseObj->GetFormID();
-            if (std::find(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID) != Settings::excludedNPCBaseIDs.end()) {
+            if (std::binary_search(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID)) {
                 return true;
             }
 
@@ -665,15 +671,15 @@ namespace LootHook
                 if (isDynamicContainer) {
                     auto file = baseObj->GetFile(0);
                     if (file) {
-                        std::string_view fileName = file->GetFilename();
+                        const char* fileName = file->GetFilename().data();
 
                         // If Shadow of Skyrim is detected, all of its various backpack containers are excluded from hiding
-                        if (fileName == "Shadow of Skyrim.esp") {
+                        if (_stricmp(fileName, "Shadow of Skyrim.esp") == 0) {
                             return true;
                         }
 
 						// If FEC or Maximum Carnage/Destruction are detected, their standalone corpse containers are included to allow hiding their contents
-                        if (fileName == "FEC.esp" || fileName == "MaximumCarnage.esp" || fileName == "MaximumDestruction.esp") {
+                        if (_stricmp(fileName, "FEC.esp") == 0 || _stricmp(fileName, "MaximumCarnage.esp") == 0 || _stricmp(fileName, "MaximumDestruction.esp") == 0) {
                             isAshGhostCorpseContainer = true;
                         }
                     }
@@ -694,7 +700,9 @@ namespace LootHook
                     if (auto processLists = RE::ProcessLists::GetSingleton()) {
                         // Ash Piles don't store their owner directly; scan loaded actors to find who points
                         // to this specific activator as their "ExtraAshPileRef"
-                        for (auto& handle : processLists->highActorHandles) {
+                        for (uint32_t i = 0; i < processLists->highActorHandles.size(); ++i) {
+                            if (i >= processLists->highActorHandles.size()) break;
+                            RE::ActorHandle handle = processLists->highActorHandles[i];
                             if (auto loadedActor = handle.get().get()) {
                                 if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
                                     if (xAsh->ashPileRef.get().get() == targetRef) {
