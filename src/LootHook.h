@@ -24,6 +24,7 @@
 #include <REL/Module.h>
 
 #include <RE/A/Actor.h>
+#include <RE/A/ActorState.h>
 #include <RE/A/ActorValues.h>
 #include <RE/A/AlchemyItem.h>
 
@@ -79,6 +80,8 @@
 #include "DeathTracker.h"
 #include "JunkIt.h"
 #include "Settings.h"
+#include "ToolRequirements.h"
+#include "Translation.h"
 
 namespace LootHook
 {
@@ -173,10 +176,10 @@ namespace LootHook
                             if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
                                 if (Settings::bEnableMod) {
-                                    RE::SendHUDMessage::ShowHUDMessage("Hidden Loot: Enabled");
+                                    RE::SendHUDMessage::ShowHUDMessage(Translation::Get("$HL_HUD_Enabled", "Hidden Loot: Enabled").c_str());
                                 }
                                 else {
-                                    RE::SendHUDMessage::ShowHUDMessage("Hidden Loot: Disabled");
+                                    RE::SendHUDMessage::ShowHUDMessage(Translation::Get("$HL_HUD_Disabled", "Hidden Loot: Disabled").c_str());
                                 }
                             }
                         }
@@ -422,6 +425,20 @@ namespace LootHook
 		RE::ActorValue associatedSkill = RE::ActorValue::kNone;
         bool isSmithable = false;
 
+        // Check if any item is marked by Junk It as junk
+        bool isJunkItCandidate = false;
+        if (Settings::bHideJunkItItems && JunkIt::API) {
+            if (JunkIt::API->IsAnyJunkForForm(a_this)) {
+                isJunkItCandidate = true;
+            }
+        }
+
+        // Tool Requirements Check
+        bool isToolCandidate = false;
+        if (Settings::bEnableToolRequirements) {
+            isToolCandidate = ToolRequirements::Manager::GetSingleton()->IsLootCandidate(a_this);
+        }
+
         // Check Blacklists first
         bool isBlacklisted = false;
         if (auto file = a_this->GetFile(0)) {
@@ -447,14 +464,19 @@ namespace LootHook
             currentHideChance = 100.0f;
         }
         else if (isClutter) {
-            // If the misc item isn't specifically blacklisted, show it
-            if (!HasKeywordFromList(Settings::miscHideKeywordsList)) return true;
+            bool isMiscBlacklisted = HasKeywordFromList(Settings::miscHideKeywordsList);
 
-            shouldHide = true;
+            // If the misc item isn't specifically blacklisted and is neither a Junk It nor Tool Requirement candidate, show it
+            if (!isMiscBlacklisted && !isJunkItCandidate && !isToolCandidate) return true;
+
+            // Only set to shouldHide if it is actually blacklisted by the user!
+            if (isMiscBlacklisted) {
+                shouldHide = true;
+                currentHideChance = Settings::fHideChanceMisc;
+            }
+
             // Clutter items are never worn
             requireWorn = false;
-            currentHideChance = Settings::fHideChanceMisc;
-
             associatedSkill = RE::ActorValue::kPickpocket;
         }
         else {
@@ -469,20 +491,23 @@ namespace LootHook
 
             // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
             if (!isBackpack) {
-                // value/weight threshold
-                if (Settings::fValueWeightThresholdForLoot > 0.0f) {
-                    float weight = a_this->GetWeight();
-                    float valWeight = (weight > 0.0f) ? (a_this->GetGoldValue() / weight) : (a_this->GetGoldValue() > 0 ? 999999.0f : 0.0f);
-                    if (valWeight >= Settings::fValueWeightThresholdForLoot) return true;
-                }
+				// Check if the item is a Junk It or missing tool candidate. If neither, it may be whitelisted based on value or keywords.
+                if (!isJunkItCandidate && !isToolCandidate) {
+                    // value/weight threshold
+                    if (Settings::fValueWeightThresholdForLoot > 0.0f) {
+                        float weight = a_this->GetWeight();
+                        float valWeight = (weight > 0.0f) ? (a_this->GetGoldValue() / weight) : (a_this->GetGoldValue() > 0 ? 999999.0f : 0.0f);
+                        if (valWeight >= Settings::fValueWeightThresholdForLoot) return true;
+                    }
 
-				// value threshold
-                if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
-                if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+                    // value threshold
+                    if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
+                    if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+                }
             }
 
-            // Option: Whitelist all naturally enchanted items (skip if it's a backpack)
-            if (Settings::bAlwaysShowEnchanted && !isBackpack) {
+            // Option: Whitelist all naturally enchanted items (skip if it's a backpack, or a Junk It or missing tool candidate)
+            if (Settings::bAlwaysShowEnchanted && !isBackpack && !isJunkItCandidate && !isToolCandidate) {
                 auto enchantable = a_this->As<RE::TESEnchantableForm>();
                 if (enchantable && enchantable->formEnchanting) return true;
             }
@@ -620,43 +645,19 @@ namespace LootHook
             }
         }
 
-        // Check if any item is marked by Junk It as junk
-        bool isJunkItCandidate = false;
-        if (Settings::bHideJunkItItems && JunkIt::API) {
-            if (JunkIt::API->IsAnyJunkForForm(a_this)) {
-                isJunkItCandidate = true;
-            }
-        }
-
-        // If the item type isn't configured to be hidden or marked as junk, allow it
-        if (!shouldHide && !isJunkItCandidate) return true;
+        // If the item type isn't configured to be hidden, marked as junk or missing a tool, allow it
+        if (!shouldHide && !isJunkItCandidate && !isToolCandidate) return true;
 
         // From here on, 'targetRef' is guaranteed to be a valid owner from history
-        auto actor = targetRef->As<RE::Actor>();
-
         auto baseObj = targetRef->GetBaseObject();
         if (!baseObj) return true;
 
+
+        auto actor = targetRef->As<RE::Actor>();
         RE::Actor* sourceActor = actor;
         bool isAshGhostCorpseContainer = false;
 
-        // Never filter items on living followers, regardless of UI state
-        // This should prevent NFF/AFT/EFF framework scripts from being blocked
-        if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return true;
-
-        if (actor) {
-            // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
-            auto npcBaseID = baseObj->GetFormID();
-            if (std::binary_search(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID)) {
-                return true;
-            }
-
-            // Check if the actor is a Nemesis from Shadow of Sykrim. Items on NPCs with these keywords will always be visible so the player is able to get them back
-            if (actor->HasKeywordString("_Nemesis") || actor->HasKeywordString("_ValidateNemesis")) {
-                return true;
-            }
-        }
-        else {
+        if (!actor) {
             // Detect if the target are Ash Piles, Ghost Remains or a custom corpse container
             auto formType = baseObj->GetFormType();
             bool isActivator = (formType == RE::FormType::Activator);
@@ -678,7 +679,7 @@ namespace LootHook
                             return true;
                         }
 
-						// If FEC or Maximum Carnage/Destruction are detected, their standalone corpse containers are included to allow hiding their contents
+                        // If FEC or Maximum Carnage/Destruction are detected, their standalone corpse containers are included to allow hiding their contents
                         if (_stricmp(fileName, "FEC.esp") == 0 || _stricmp(fileName, "MaximumCarnage.esp") == 0 || _stricmp(fileName, "MaximumDestruction.esp") == 0) {
                             isAshGhostCorpseContainer = true;
                         }
@@ -722,14 +723,31 @@ namespace LootHook
                 if (sourceActor) isAshGhostCorpseContainer = true;
             }
         }
+
+        // Never filter items on living followers, regardless of UI state
+        // This should prevent NFF/AFT/EFF framework scripts from being blocked
+        if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return true;
+
+        if (sourceActor) {
+            // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
+            auto npcBaseID = sourceActor->GetBaseObject()->GetFormID();
+            if (std::binary_search(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID)) {
+                return true;
+            }
+
+            // Check if the actor is a Nemesis from Shadow of Sykrim. Items on NPCs with these keywords will always be visible so the player is able to get them back
+            if (sourceActor->HasKeywordString("_Nemesis") || sourceActor->HasKeywordString("_ValidateNemesis")) {
+                return true;
+            }
+        }
         
         // Check if the actor is in a "knocked out" state (bleeding out or unconscious)
         // This increases potential compatibility with death alternative or knock-out mods 
         // that change the actor's state to incapacitated instead of killing them
         bool isKnockedOut = false;
-        if (actor && !actor->IsDead()) {
-            auto actorState = actor->AsActorState();
-            if (actorState && (actorState->IsBleedingOut() || actorState->IsUnconscious())) isKnockedOut = true;
+        if (sourceActor && !sourceActor->IsDead()) {
+            auto actorState = sourceActor->AsActorState();
+            if (actorState && (actorState->IsBleedingOut() || actorState->IsUnconscious() || actorState->GetLifeState() == RE::ACTOR_LIFE_STATE::kDying)) isKnockedOut = true;
         }
 
 		// Check if the player is currently sneaking
@@ -740,17 +758,24 @@ namespace LootHook
 
         // Determine if the player is attempting to pickpocket the target 
         // (actor is alive, not knocked out, container is open, and player is sneaking)
-        bool isPickpocketing = actor && !actor->IsDead() && !isKnockedOut && (isContainerOpen || isLootMenuOpen) && isPlayerSneaking;
+        bool isPickpocketing = sourceActor && !sourceActor->IsDead() && !isKnockedOut && (isContainerOpen || isLootMenuOpen) && isPlayerSneaking;
 
         // Valid target check: The item is eligible for hiding if it's owned by a dead actor, 
         // a knocked-out actor, a specialized corpse container, or via pickpocketing (if enabled)
-        bool isValidTarget = (actor && actor->IsDead()) || isKnockedOut || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
+        bool isValidTarget = (sourceActor && sourceActor->IsDead()) || isKnockedOut || isAshGhostCorpseContainer || (Settings::bIncludePickpocket && isPickpocketing);
 
         if (isValidTarget) {
 
 			// Early exit if no pickpocketing and all death categories are disabled
             if (!isPickpocketing && !Settings::bApplyToPreDead && !Settings::bApplyToNPCKills && !Settings::bApplyToPlayerKills) {
                 return true;
+            }
+
+            // If the item is a tool candidate, check if the required tool is missing.
+            // Tools are bypassed during pickpocketing and for Ash Piles.
+            bool isToolMissing = false;
+            if (isToolCandidate && !isPickpocketing && !isAshGhostCorpseContainer) {
+                isToolMissing = ToolRequirements::Manager::GetSingleton()->IsToolMissing(a_this, sourceActor);
             }
 
             // Death category check: Determine the death category and apply category-specific settings
@@ -846,17 +871,23 @@ namespace LootHook
                 return true;
             }
 
-			// If the item is after precise checks not marked for junk, allow it
-            if (!shouldHide && !confirmedJunkIt) {
+            // If the item is naturally allowed, not confirmed as junk, and no tool is missing, allow it
+            if (!shouldHide && !confirmedJunkIt && !isToolMissing) {
                 return true;
-            }
-			// If the item is confirmed as junk, hide it
-            if (confirmedJunkIt) {
-                return false;
             }
 
             // Safety: Never hide Quest Items, specifically whitelisted enchanted gear or player-modified items (e.g. via tempering or enchanting)
             if (isQuestObject || isExtraEnchanted || isPlayerModified)  return true;
+
+            // If the item is missing a required tool, hide it
+            if (isToolMissing) {
+                return false;
+            }
+
+            // If the item is confirmed as junk, hide it
+            if (confirmedJunkIt) {
+                return false;
+            }
 
             // skill hide chance reduction
             if (Settings::bEnableSkillScaling && isPlayerLoaded && currentHideChance > 0.0f) {

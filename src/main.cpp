@@ -1,13 +1,18 @@
+// ===== Default Library =====
+#include <Windows.h>
+
 // ===== SKSE =====
 #include <SKSE/API.h>
 #include <SKSE/Logger.h>
 #include <SKSE/Interfaces.h>
+#include <SKSE/Translation.h>
 
 // ===== RE (Game Types) =====
 #include <RE/B/BSInputDeviceManager.h>
 #include <RE/M/MenuOpenCloseEvent.h>
 #include <RE/S/ScriptEventSourceHolder.h>
 #include <RE/T/TESDeathEvent.h>
+#include <RE/T/TESContainerChangedEvent.h>
 #include <RE/U/UI.h>
 
 // ===== Project =====
@@ -18,6 +23,7 @@
 
 // ===== APIs =====
 #include "JunkIt.h"
+#include "ToolRequirements.h"
 
 // Serialization Callbacks
 static void SaveCallback(SKSE::SerializationInterface* a_intfc) {
@@ -55,20 +61,31 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         
         // Register Junk It API listener
         if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
-            JunkIt::ListenForAPI([](SKSE::MessagingInterface::Message* api_msg) {
-                if (api_msg->type == JunkIt::kMessage_GetAPI) {
-                    if (!JunkIt::API) {
-                        JunkIt::API = static_cast<JunkIt::IAPI*>(api_msg->data);
-                        logs::info("Successfully loaded Junk It API version: {}", JunkIt::API->GetVersion());
+            // Check if the DLL is actually loaded before registering
+            if (GetModuleHandleA("JunkIt.dll")) {
+                JunkIt::ListenForAPI([](SKSE::MessagingInterface::Message* api_msg) {
+                    if (api_msg->type == JunkIt::kMessage_GetAPI) {
+                        if (!JunkIt::API) {
+                            JunkIt::API = static_cast<JunkIt::IAPI*>(api_msg->data);
+                            logs::info("Successfully loaded Junk It API version: {}", JunkIt::API->GetVersion());
+                        }
                     }
-                }
-            });
+                });
+            }
+            else {
+                logs::info("Junk It plugin not detected. API integration disabled.");
+            }
         }
         
         // Wait until all data forms (esp/esm) are loaded before caching forms
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+            SKSE::Translation::ParseTranslation("HiddenLoot");
+
 			Settings::LoadGameData();
 			MenuIntegration::Install();
+
+            // Load Tool Requirement Rules from JSON
+            ToolRequirements::Manager::GetSingleton()->LoadRules();
 
 			// Register for menu open/close events to track when the player is interacting with loot/container UIs
             auto ui = RE::UI::GetSingleton();
@@ -88,9 +105,15 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
             auto sourceHolder = RE::ScriptEventSourceHolder::GetSingleton();
             if (sourceHolder) {
                 sourceHolder->AddEventSink<RE::TESDeathEvent>(LootHook::DeathTracker::GetSingleton());
-                logs::info("Death event sink registered successfully.");
+                sourceHolder->AddEventSink<RE::TESContainerChangedEvent>(ToolRequirements::Manager::GetSingleton());
+                logs::info("Game event sinks registered successfully.");
             }
             logs::info("Game data loaded and Menu integrated.");
+        }
+        // Scan the player's inventory to prime the tool cache
+        else if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame || a_msg->type == SKSE::MessagingInterface::kNewGame) {
+            ToolRequirements::Manager::GetSingleton()->ScanPlayerInventory();
+            logs::info("Player inventory scanned successfully.");
         }
     });
     return true;

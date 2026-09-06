@@ -124,6 +124,9 @@ namespace Settings
     // Junk It integration
     inline bool bHideJunkItItems = false;
 
+    // Tool Required Loot (Survival/Hunting mods)
+    inline bool bEnableToolRequirements = false;
+
     // Helper function to remove leading/trailing whitespace
     inline std::string Trim(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
@@ -133,21 +136,24 @@ namespace Settings
     }
 
 	// Helper function to safely parse floats from INI values, with support for both dot and comma as decimal separators
-    inline float ParseFloatSafe(const std::string& val, float fallback) {
+    inline float ParseFloatSafe(const std::string& val, float fallback, const std::string& keyName = "") {
         std::string cleanVal = val;
         std::replace(cleanVal.begin(), cleanVal.end(), ',', '.');
         std::istringstream stream(cleanVal);
         stream.imbue(std::locale::classic());
         float result = fallback;
         stream >> result;
-        if (stream.fail()) {
+        if (stream.fail() || !stream.eof()) {
+            if (!keyName.empty()) {
+                logs::warn("Settings: Invalid number format for '{}'. Value '{}' is not a valid number. Falling back to default: {}.", keyName, val, fallback);
+            }
             return fallback;
         }
         return result;
     }
 
     // Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
-    inline void ProcessKeywords(std::vector<RE::BSFixedString>& keywordList, std::string& keywordString, std::vector<std::string>* blacklistedMods = nullptr) {
+    inline void ProcessKeywords(std::vector<RE::BSFixedString>& keywordList, std::string& keywordString, std::vector<std::string>* blacklistedMods = nullptr, const std::string& settingName = "Keywords") {
         keywordList.clear();
         if (blacklistedMods) {
             blacklistedMods->clear();
@@ -225,13 +231,13 @@ namespace Settings
                     if (key == "bEnableMod") bEnableMod = isTrue;
                     else if (key == "bAlwaysShowEnchanted") bAlwaysShowEnchanted = isTrue;
                     else if (key == "fValueThresholdForLoot") {
-                        fValueThresholdForLoot = ParseFloatSafe(value, 1000.0f);
+                        fValueThresholdForLoot = ParseFloatSafe(value, 1000.0f, key);
                     }
                     else if (key == "fValueWeightThresholdForLoot") {
-                        fValueWeightThresholdForLoot = ParseFloatSafe(value, 0.0f);
+                        fValueWeightThresholdForLoot = ParseFloatSafe(value, 0.0f, key);
                     }
                     else if (key == "fHideChance") {
-                        fHideChance = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChance = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
                     else if (key == "bUnlootableArmor") bUnlootableArmor = isTrue;
                     else if (key == "bArmorWornOnly") bArmorWornOnly = isTrue;
@@ -261,40 +267,41 @@ namespace Settings
                     else if (key == "sWhitelistedItems") sWhitelistedItems = originalValue;
                     else if (key == "sMiscHideKeywords") sMiscHideKeywords = originalValue;
                     else if (key == "fMiscHideChance") {
-                        fHideChanceMisc = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChanceMisc = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
 					else if (key == "bUseCategoryHideChances") bUseCategoryHideChances = isTrue;
                     else if (key == "fHideChanceArmor") {
-                        fHideChanceArmor = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChanceArmor = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
                     else if (key == "fHideChanceWeapons") {
-                        fHideChanceWeapons = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChanceWeapons = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
                     else if (key == "fHideChanceClothing") {
-                        fHideChanceClothing = std::clamp(ParseFloatSafe(value, 100.0f), 0.0f, 100.0f);
+                        fHideChanceClothing = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
                     else if (key == "bEnableSkillScaling") bEnableSkillScaling = isTrue;
                     else if (key == "fMaxSkillHideReduction") {
-                        fMaxSkillHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
+                        fMaxSkillHideReduction = std::clamp(ParseFloatSafe(value, 0.0f, key), 0.0f, 100.0f);
                     }
 					else if (key == "fMaxSmithingHideReduction") {
-						fMaxSmithingHideReduction = std::clamp(ParseFloatSafe(value, 0.0f), 0.0f, 100.0f);
+						fMaxSmithingHideReduction = std::clamp(ParseFloatSafe(value, 0.0f, key), 0.0f, 100.0f);
 					}
 					else if (key == "bEnableHotkey") bEnableHotkey = isTrue;
                     else if (key == "iToggleHotkey") {
-                        iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 45.0f));
+                        iToggleHotkey = static_cast<int>(ParseFloatSafe(value, 45.0f, key));
                     }
                     else if (key == "iToggleModifierKey") {
-                        iToggleModifierKey = static_cast<int>(ParseFloatSafe(value, 56.0f));
+                        iToggleModifierKey = static_cast<int>(ParseFloatSafe(value, 56.0f, key));
                     }
                     else if (key == "bHideJunkItItems") bHideJunkItItems = isTrue;
+                    else if (key == "bEnableToolRequirements") bEnableToolRequirements = isTrue;
                     else keyMatched = false;
                     if (keyMatched) keysFound++;
                 }
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 44) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 45) Save();
     }
 
     inline void LoadGameData() {
@@ -318,10 +325,10 @@ namespace Settings
         }
 
         // Process user-defined hide keywords (and blacklisted mods)
-        ProcessKeywords(hideKeywordsList, sHideKeywords, &blacklistedModsList);
+        ProcessKeywords(hideKeywordsList, sHideKeywords, &blacklistedModsList, "sHideKeywords");
 
         // Process misc hide keywords (experimental)
-        ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords);
+        ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords, nullptr, "sMiscHideKeywords");
 
 		// Check for known durability SKSE plugins and set compatibility flag
         if (GetModuleHandleA("EquipmentDurabilitySystem-NG.dll") ||
@@ -418,7 +425,7 @@ namespace Settings
         }
 
 		// Whitelist items from Alternative Armors - Orcish Plate (ccbgssse057-ba_orcish.esl)
-        if (auto dataHandler = RE::TESDataHandler::GetSingleton()) {
+        if (dataHandler) {
             std::vector<RE::FormID> ccOrcishQuestItems = { 0x83C, 0x83D, 0x83E, 0x83F };
             for (auto localID : ccOrcishQuestItems) {
                 if (auto armor = dataHandler->LookupForm<RE::TESBoundObject>(localID, "ccbgssse057-ba_orcish.esl")) {
@@ -440,6 +447,10 @@ namespace Settings
         if (file.is_open()) {
             file << "[General]\n";
             file << "bEnableMod=" << (bEnableMod ? "true" : "false") << "\n\n";
+
+            file << "; If true, requires specific tools in your inventory to loot certain items (e.g., a Dagger to harvest animal hides).\n";
+            file << "; You must configure the rules in 'Data/SKSE/Plugins/ToolRequiredLoot.json'.\n";
+            file << "bEnableToolRequirements=" << (bEnableToolRequirements ? "true" : "false") << "\n\n";
 
             file << "; If true, magically enchanted items will always be lootable.\n";
             file << "bAlwaysShowEnchanted=" << (bAlwaysShowEnchanted ? "true" : "false") << "\n\n";
@@ -486,7 +497,7 @@ namespace Settings
             file << "; Requires Junk It 2.0.8 or newer.\n";
             file << "bHideJunkItItems=" << (bHideJunkItItems ? "true" : "false") << "\n\n\n";
 
-
+            
             file << "[Compatibility]\n";
             file << "; If true, items modified by the player (tempered, enchanted, renamed) will not be hidden.\n";
             file << "bProtectPlayerModifiedGear=" << (bProtectPlayerModifiedGear ? "true" : "false") << "\n\n";
