@@ -157,7 +157,7 @@ namespace Settings
     }
 
     // Helper fuction to process comma-separated keyword strings into lists, with safety checks against essential keywords
-    inline void ProcessKeywords(std::vector<RE::BSFixedString>& keywordList, std::string& keywordString, std::vector<std::string>* blacklistedMods = nullptr, const std::string& settingName = "Keywords") {
+    inline void ProcessKeywords(std::vector<RE::BSFixedString>& keywordList, std::string& keywordString, std::vector<std::string>* blacklistedMods = nullptr) {
         keywordList.clear();
         if (blacklistedMods) {
             blacklistedMods->clear();
@@ -333,10 +333,10 @@ namespace Settings
         }
 
         // Process user-defined hide keywords (and blacklisted mods)
-        ProcessKeywords(hideKeywordsList, sHideKeywords, &blacklistedModsList, "sHideKeywords");
+        ProcessKeywords(hideKeywordsList, sHideKeywords, &blacklistedModsList);
 
         // Process misc hide keywords (experimental)
-        ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords, nullptr, "sMiscHideKeywords");
+        ProcessKeywords(miscHideKeywordsList, sMiscHideKeywords, nullptr);
 
 		// Check for known durability SKSE plugins and set compatibility flag
         if (GetModuleHandleA("EquipmentDurabilitySystem-NG.dll") ||
