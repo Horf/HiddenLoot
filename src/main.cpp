@@ -8,7 +8,9 @@
 
 // ===== RE (Game Types) =====
 #include <RE/B/BSInputDeviceManager.h>
+
 #include <RE/S/ScriptEventSourceHolder.h>
+
 #include <RE/T/TESDeathEvent.h>
 #include <RE/T/TESContainerChangedEvent.h>
 

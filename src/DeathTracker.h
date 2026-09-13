@@ -11,8 +11,10 @@
 
 // ===== RE (Game Types) =====
 #include <RE/A/Actor.h>
+
 #include <RE/B/BSTEvent.h>
 #include <RE/B/BSCoreTypes.h>
+
 #include "RE/T/TESDeathEvent.h"
 
 // ===== Project =====

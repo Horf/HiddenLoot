@@ -1,14 +1,19 @@
 #pragma once
 
+// ===== Default Library =====
+#include <cstdint>
+
+// ===== SKSE =====
 #include <SKSE/API.h>
 #include <SKSE/Interfaces.h>
 
+// ===== RE (Game Types) =====
 #include <RE/E/ExtraDataList.h>
+
 #include <RE/I/InventoryEntryData.h>
+
 #include <RE/T/TESBoundObject.h>
 #include <RE/T/TESForm.h>
-
-#include <cstdint>
 
 namespace JunkIt {
     constexpr const char* PLUGIN_NAME = "JunkIt";

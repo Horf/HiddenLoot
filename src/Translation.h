@@ -1,8 +1,10 @@
 #pragma once
 
-#include <SKSE/Translation.h>
-
+// ===== Default Library =====
 #include <string>
+
+// ===== SKSE =====
+#include <SKSE/Translation.h>
 
 namespace Translation
 {

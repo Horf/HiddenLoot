@@ -51,13 +51,12 @@
 #include <RE/I/IngredientItem.h>
 #include <RE/I/InputEvent.h>
 #include <RE/I/InputDevices.h>
+#include <RE/I/InventoryEntryData.h>
+#include <RE/I/InventoryMenu.h>
 
 #include <RE/M/MagicMenu.h>
 
 #include <RE/N/NiSmartPointer.h>
-
-#include <RE/I/InventoryEntryData.h>
-#include <RE/I/InventoryMenu.h>
 
 #include <RE/P/PlayerCharacter.h>
 #include <RE/P/ProcessLists.h>

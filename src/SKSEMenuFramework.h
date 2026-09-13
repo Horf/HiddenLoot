@@ -1,5 +1,6 @@
 #pragma once
 
+// ===== Default Library =====
 #include <windows.h>
 
 #include <atomic>
@@ -13,6 +14,7 @@
 #include <locale>
 #include <string>
 
+// ===== RE (Game Types) =====
 #include <RE/I/InputEvent.h>
 
 inline HMODULE GetMenuFrameworkModule() {
