@@ -73,7 +73,6 @@ namespace ToolRequirements
         // Parses the JSON configuration file to load all tool requirement rules
         void LoadRules() {
             _rules.clear();
-            if (!Settings::bEnableToolRequirements) return;
 
             std::filesystem::path jsonPath = "Data/SKSE/Plugins/ToolRequiredLoot.json";
 
@@ -229,7 +228,7 @@ namespace ToolRequirements
         // Performs an initial scan of the player's inventory upon loading a save
         // Populates the internal cache tracking which tools the player currently holds
         void ScanPlayerInventory() {
-            if (!Settings::bEnableToolRequirements || _rules.empty()) return;
+            if (_rules.empty()) return;
 
             std::lock_guard<std::shared_mutex> writeLock(_mutex);
             _keywordCounts.clear();
@@ -361,7 +360,7 @@ namespace ToolRequirements
 
         // Listens for inventory changes (items added/removed) to dynamically update the player's tool cache without needing to rescan the entire inventory
         virtual RE::BSEventNotifyControl ProcessEvent(const RE::TESContainerChangedEvent* a_event, RE::BSTEventSource<RE::TESContainerChangedEvent>*) override {
-            if (!Settings::bEnableToolRequirements || !a_event) return RE::BSEventNotifyControl::kContinue;
+            if (!a_event || _rules.empty()) return RE::BSEventNotifyControl::kContinue;
 
             auto player = RE::PlayerCharacter::GetSingleton();
             if (!player) return RE::BSEventNotifyControl::kContinue;
