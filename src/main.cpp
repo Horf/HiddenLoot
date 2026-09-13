@@ -5,15 +5,12 @@
 #include <SKSE/API.h>
 #include <SKSE/Logger.h>
 #include <SKSE/Interfaces.h>
-#include <SKSE/Translation.h>
 
 // ===== RE (Game Types) =====
 #include <RE/B/BSInputDeviceManager.h>
-#include <RE/M/MenuOpenCloseEvent.h>
 #include <RE/S/ScriptEventSourceHolder.h>
 #include <RE/T/TESDeathEvent.h>
 #include <RE/T/TESContainerChangedEvent.h>
-#include <RE/U/UI.h>
 
 // ===== Project =====
 #include "LootHook.h"
@@ -24,6 +21,7 @@
 // ===== APIs =====
 #include "JunkIt.h"
 #include "ToolRequirements.h"
+#include "QuickLootAPI.h"
 
 // Serialization Callbacks
 static void SaveCallback(SKSE::SerializationInterface* a_intfc) {
@@ -58,7 +56,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
     logs::info("Hooks installed and INI loaded. Waiting for Data Loaded event...");
     
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg) {
-        
         // Register Junk It API listener
         if (a_msg->type == SKSE::MessagingInterface::kPostLoad) {
             // Check if the DLL is actually loaded before registering
@@ -73,26 +70,33 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
                 });
             }
             else {
-                logs::info("Junk It plugin not detected. API integration disabled.");
+                logs::info("Junk It not detected. API integration disabled.");
             }
         }
         
         // Wait until all data forms (esp/esm) are loaded before caching forms
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
-            SKSE::Translation::ParseTranslation("HiddenLoot");
+			// Register QuickLoot API listener
+            if (GetModuleHandleA("QuickLootIE.dll")) {
+                if (QuickLoot::API::QuickLootAPI::Init("HiddenLoot", QuickLoot::API::ApiVersion::kV20)) {
+                    QuickLoot::API::QuickLootAPI::RegisterModifyInventoryHandler([](QuickLoot::API::Events::ModifyInventoryEvent* e) {
+                        LootHook::HandleQuickLootInventory(e);
+                    });
+                    logs::info("QuickLootIE API successfully initialized.");
+                }
+                else {
+                    logs::warn("QuickLootIE detected, but API initialization failed.");
+                }
+            }
+            else {
+                logs::info("QuickLootIE not detected. API integration disabled.");
+            }
 
 			Settings::LoadGameData();
 			MenuIntegration::Install();
 
             // Load Tool Requirement Rules from JSON
             ToolRequirements::Manager::GetSingleton()->LoadRules();
-
-			// Register for menu open/close events to track when the player is interacting with loot/container UIs
-            auto ui = RE::UI::GetSingleton();
-            if (ui) {
-                ui->AddEventSink<RE::MenuOpenCloseEvent>(LootHook::MenuTracker::GetSingleton());
-                logs::info("Menu event sink registered successfully.");
-            }
 
             // Register hotkey listener
             auto inputDeviceManager = RE::BSInputDeviceManager::GetSingleton();

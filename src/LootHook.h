@@ -1,8 +1,6 @@
 #pragma once
 
 // ===== Default Library =====
-#include <atomic>
-#include <chrono>
 #include <array>
 #include <mutex>
 #include <cstdint>
@@ -50,14 +48,15 @@
 
 #include <RE/G/GiftMenu.h>
 
+#include <RE/I/IngredientItem.h>
 #include <RE/I/InputEvent.h>
 #include <RE/I/InputDevices.h>
 
-#include <RE/M/MenuOpenCloseEvent.h>
 #include <RE/M/MagicMenu.h>
 
 #include <RE/N/NiSmartPointer.h>
 
+#include <RE/I/InventoryEntryData.h>
 #include <RE/I/InventoryMenu.h>
 
 #include <RE/P/PlayerCharacter.h>
@@ -76,6 +75,11 @@
 #include <RE/T/TESObjectBOOK.h>
 #include <RE/T/TESAmmo.h>
 
+#include <RE/U/UI.h>
+
+// ===== APIs =====
+#include "QuickLootAPI.h"
+
 // ===== Project =====
 #include "DeathTracker.h"
 #include "JunkIt.h"
@@ -90,62 +94,10 @@ namespace LootHook
     inline REL::Relocation<GetPlayable_t> original_WEAP_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_MISC_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_ALCH_GetPlayable;
+    inline REL::Relocation<GetPlayable_t> original_INGR_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_BOOK_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_SCRL_GetPlayable;
     inline REL::Relocation<GetPlayable_t> original_AMMO_GetPlayable;
-
-	// Tracks the open/close state of relevant menus to determine if an attempt to identify a target reference for the item should be queried
-    class MenuTracker : public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
-    public:
-        static MenuTracker* GetSingleton() {
-            static MenuTracker singleton;
-            return &singleton;
-        }
-        std::atomic<bool> bLootMenuOpen{ false };
-        std::atomic<long long> lastLootMenuCloseTime{ 0 };
-        std::atomic<bool> bContainerMenuOpen{ false };
-        std::atomic<bool> bOtherMenuOpen{ false };
-
-        virtual RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override {
-            if (!a_event) return RE::BSEventNotifyControl::kContinue;
-
-            static const RE::BSFixedString lootMenuName("LootMenu");
-
-            if (a_event->menuName == lootMenuName) {
-                bLootMenuOpen = a_event->opening;
-                if (!a_event->opening) {
-                    auto now = std::chrono::steady_clock::now().time_since_epoch();
-                    lastLootMenuCloseTime = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-                }
-            }
-            else if (a_event->menuName == RE::ContainerMenu::MENU_NAME) {
-                bContainerMenuOpen = a_event->opening;
-            }
-            else if (
-                a_event->menuName == RE::InventoryMenu::MENU_NAME ||
-                a_event->menuName == RE::MagicMenu::MENU_NAME ||
-                a_event->menuName == RE::FavoritesMenu::MENU_NAME ||
-                a_event->menuName == RE::BarterMenu::MENU_NAME ||
-                a_event->menuName == RE::CraftingMenu::MENU_NAME ||
-                a_event->menuName == RE::GiftMenu::MENU_NAME
-                ) {
-                bOtherMenuOpen = a_event->opening;
-            }
-            return RE::BSEventNotifyControl::kContinue;
-        }
-
-		// Due to the asynchronous nature of menu updates, this is a way to consider the loot menu "effectively open"
-        // for a brief window after it closes to prevent flickering of items
-        bool IsLootMenuEffectivelyOpen() const {
-            if (bLootMenuOpen) return true;
-            auto now = std::chrono::steady_clock::now().time_since_epoch();
-            auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-            // 250ms grace period bridges the gap during UI fade-out animations or 
-            // rapid crosshair jitter to prevent items from "blinking" into view
-            if (nowMs - lastLootMenuCloseTime < 250) return true;
-            return false;
-        }
-    };
 
 	// Listens for hotkey presses to toggle the mod on/off
     class InputListener : public RE::BSTEventSink<RE::InputEvent*> {
@@ -208,7 +160,13 @@ namespace LootHook
         if (changes && changes->entryList) {
             for (auto* entry : *changes->entryList) {
                 if (entry && entry->object && entry->object->GetFormID() == a_item->GetFormID()) {
-                    return true;
+                    if (a_ref->IsPlayerRef()) {
+                        // Protect against false-positives for items the player just dropped/lost
+                        if (entry->countDelta > 0) return true;
+                    }
+                    else {
+                        return true;
+                    }
                 }
             }
         }
@@ -228,11 +186,7 @@ namespace LootHook
         }
 
         // Skip the item scan for activators/special container (e.g. Ash Piles)
-        // These don't hold traditional inventories in the same way actors do
         if (a_allowShortcut) {
-            // Activators (Ash Piles) and dynamic containers (0xFF) often haven't initialized 
-            // their inventory changes yet. The shortcut assumes they "own" the item to 
-            // maintain UI synchronization until the engine catches up
             bool isActivator = base->Is(RE::FormType::Activator);
             bool isDynamicContainer = base->Is(RE::FormType::Container) && ((a_ref->GetFormID() >> 24) == 0xFF);
             if (isActivator || isDynamicContainer) return true;
@@ -241,21 +195,9 @@ namespace LootHook
         return false;
     }
 
-    // Improved target retrieval with a history buffer to sync fast crosshair movement with slow UI threads
-    RE::TESObjectREFR* GetTargetRef(RE::TESBoundObject* a_item, bool a_isLootMenuOpen, bool a_isContainerOpen)
+    // Crosshair retrieval to allow vanilla Skyrim to correctly display the "(Empty)" prompt when looking at a corpse where all items are hidden by the mod
+    RE::TESObjectREFR* GetCrosshairTarget(RE::TESBoundObject* a_item)
     {
-		// History buffer size
-        constexpr size_t kHistorySize = 20;
-
-        // Store the last unique references to bridge the gap between the real-time crosshair 
-        // and asynchronous UI updates (like QuickLoot IE)
-        static std::array<RE::ObjectRefHandle, kHistorySize> s_targetHistory{};
-        static size_t s_historySize = 0;
-        static std::mutex s_historyMutex;
-
-        size_t localMaxDepth = 0;
-        std::array<RE::ObjectRefHandle, kHistorySize> localHistory{};
-        
         auto crosshair = RE::CrosshairPickData::GetSingleton();
         if (!crosshair) return nullptr;
 
@@ -274,7 +216,7 @@ namespace LootHook
 
                 else if (crosshair->targetActor[mainHand]) refPtr = crosshair->targetActor[mainHand].get();
                 else if (crosshair->targetActor[offHand]) refPtr = crosshair->targetActor[offHand].get();
-                
+
                 else if (crosshair->target[mainHand]) refPtr = crosshair->target[mainHand].get();
                 else if (crosshair->target[offHand]) refPtr = crosshair->target[offHand].get();
             }
@@ -284,121 +226,58 @@ namespace LootHook
             if (crosshair->target[0]) refPtr = crosshair->target[0].get();
         }
 
-        {
-            // Thread safety: Lock the history buffer while updating and reading
-            std::lock_guard<std::mutex> lock(s_historyMutex);
+        RE::TESObjectREFR* target = refPtr.get();
+        if (!target) return nullptr;
 
-            // Update history: Push new target to front and keep only the most recent entries
-            if (refPtr) {
-                auto currentHandle = refPtr->CreateRefHandle();
-                // Only add if it's not already the newest entry
-                if (s_historySize == 0 || s_targetHistory[0] != currentHandle) {
-                    for (size_t i = kHistorySize - 1; i > 0; --i) {
-                        s_targetHistory[i] = s_targetHistory[i - 1];
-                    }
-                    s_targetHistory[0] = currentHandle;
-                    if (s_historySize < kHistorySize) s_historySize++;
-                }
-            }
+        // Does the target the player is looking at actually own this item?
+        auto base = target->GetBaseObject();
+        bool isSpecial = base && (base->Is(RE::FormType::Activator) || (base->Is(RE::FormType::Container) && (target->GetFormID() >> 24) == 0xFF));
 
-            // Security check: Only use history if a looting UI is actually active
-            // This prevents the mod from "detecting" a corpse owner while the player is just browsing their own inventory
-            if (!refPtr && !a_isLootMenuOpen && !a_isContainerOpen) return nullptr;
-
-            // Search depth: QuickLoot needs the full history due to async lag
-            // The ContainerMenu (paused) only needs the most recent target to prevent "filter bleeding" between corpses
-            localMaxDepth = a_isLootMenuOpen ? s_historySize : (s_historySize == 0 ? 0 : 1);
-
-            // Fast copy of only the relevant handles so the lock can be released immediately
-            for (size_t i = 0; i < localMaxDepth; ++i) {
-                localHistory[i] = s_targetHistory[i];
-            }
-        } // <--- Lock is explicitly released here. The slow inventory scanning below now happens lock-free
-
-        // Strict search in history. Prioritizing finding the item in a known 
-        // container's real inventory before falling back to the crosshair shortcut
-        for (size_t i = 0; i < localMaxDepth; ++i) {
-            auto ref = localHistory[i].get().get();
-            if (!ref) continue;
-            auto base = ref->GetBaseObject();
-            bool isSpecial = base && (base->Is(RE::FormType::Activator) || (base->Is(RE::FormType::Container) && (ref->GetFormID() >> 24) == 0xFF));
-            if (ContainerHasItem(ref, a_item, isSpecial)) return ref;
+        if (ContainerHasItem(target, a_item, isSpecial)) {
+            return target;
         }
 
-		// Final check: If the current crosshair target has the item, it's the most likely candidate
-        if (refPtr && ContainerHasItem(refPtr.get(), a_item, true)) {
-            return refPtr.get();
-        }
-
-        // Item found nowhere (it was just looted or crosshair moved to empty space)
         return nullptr;
     }
 
-    // Core logic to determine if an item should be shown or hidden
-    bool ProcessItem(RE::TESBoundObject* a_this, bool originalResult)
+	// Core logic to determine if an item should be hidden based on the current game state, player state, and item properties
+    bool ShouldHideItem(RE::TESBoundObject* a_item, RE::TESObjectREFR* a_targetRef, bool a_isContainerOpen, bool a_isLootMenuOpen, RE::InventoryEntryData* a_entryData = nullptr)
     {
-        // Abort if mod is disabled or the item is natively unplayable
-        if (!Settings::bEnableMod) return originalResult;
-        if (!originalResult) return false;
+        if (!a_item || !a_targetRef) return false;
 
-        // UI Context check
-        auto menuTracker = MenuTracker::GetSingleton();
-        bool isLootMenuOpen = menuTracker->IsLootMenuEffectivelyOpen();
-        bool isContainerOpen = menuTracker->bContainerMenuOpen;
-        bool isAnyOtherMenuOpen = menuTracker->bOtherMenuOpen;
-
-        if (isAnyOtherMenuOpen && !isContainerOpen) return true;
-
-		// Check if player is loaded (if a valid player reference with a parent cell exists)
-        // This prevents the mod from interfering with item interactions during loading screens or when the player is not fully initialized
         auto player = RE::PlayerCharacter::GetSingleton();
         bool isPlayerLoaded = player && player->Is3DLoaded();
 
-        // Ownership validation: Find out which recent target owns the item
-        auto targetRef = GetTargetRef(a_this, isLootMenuOpen, isContainerOpen);
+        // Absolute safety nets for Lockpicks - never hide them
+        auto formID = a_item->GetFormID();
+        if (formID == 0x0000000A) return false;
 
-        // Phantom-Item protection: Hide items that lag in QuickLoot to prevent flickering
-        if (!targetRef) {
-            // Never aggressively hide items if ContainerMenu is open
-            if (isContainerOpen) return true;
-
-            // Never hide the player's own items
-            if (isPlayerLoaded && ContainerHasItem(player, a_this, false)) return true;
-
-            // If the QuickLoot menu is open, but we can't find a valid target reference that owns the item, it's likely a phantom item due to async lag
-            if (isLootMenuOpen) return false;
-
-            // No crosshair target, no UI open so true is the default to prevent hiding items for other scripted interactions (like Odin's Gonar's Greed spell)
-            return true;
-        }
-
-        // Absolute safety nets for Misc Items - never hide Gold or Lockpicks
-        auto formID = a_this->GetFormID();
-        if (formID == 0x0000000F || formID == 0x0000000A) return true;
+        // Safety net for Gold (bypassed if user explicitly enables hiding gold)
+        if (formID == 0x0000000F && !Settings::bHideGold) return false;
 
         // Never hide Gems
-        auto kwForm = a_this->As<RE::BGSKeywordForm>();
-        if (kwForm && kwForm->HasKeywordString("VendorItemGem")) return true;
+        auto kwForm = a_item->As<RE::BGSKeywordForm>();
+        if (kwForm && kwForm->HasKeywordString("VendorItemGem")) return false;
 
         // Item whitelist priority: If the item has any of the user-defined whitelist keywords, it should always be shown regardless of other settings
         if (!Settings::whitelistedItemBaseIDs.empty()) {
-            auto itemFormID = a_this->GetFormID();
+            auto itemFormID = a_item->GetFormID();
             if (std::binary_search(Settings::whitelistedItemBaseIDs.begin(), Settings::whitelistedItemBaseIDs.end(), itemFormID)) {
-                return true;
+                return false;
             }
         }
 
         // Mod specific whitelist checks
-        if (auto file = a_this->GetFile(0)) {
+        if (auto file = a_item->GetFile(0)) {
             const char* modName = file->GetFilename().data();
 
             auto CompareModName = [&](const std::string& listName) {
                 return _stricmp(modName, listName.c_str()) == 0;
-            };
+                };
 
             if (!Settings::whitelistedModsList.empty()) {
                 if (std::find_if(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), CompareModName) != Settings::whitelistedModsList.end()) {
-                    return true;
+                    return false;
                 }
             }
         }
@@ -406,7 +285,7 @@ namespace LootHook
         // Helper to check if the item has any keyword from a given list
         auto HasKeywordFromList = [&](const std::vector<RE::BSFixedString>& keywordList) -> bool {
             if (keywordList.empty()) return false;
-            auto kwForm = a_this->As<RE::BGSKeywordForm>();
+            auto kwForm = a_item->As<RE::BGSKeywordForm>();
             if (kwForm) {
                 for (const auto& kw : keywordList) {
                     if (kwForm->HasKeywordString(kw)) return true;
@@ -415,20 +294,20 @@ namespace LootHook
             return false;
         };
 
-        bool isAmmo = a_this->IsAmmo();
-        bool isClutter = !a_this->IsWeapon() && !a_this->IsArmor() && !isAmmo;
+        bool isAmmo = a_item->IsAmmo();
+        bool isClutter = !a_item->IsWeapon() && !a_item->IsArmor() && !isAmmo;
         float currentHideChance = Settings::fHideChance;
         bool shouldHide = false;
         bool requireWorn = true;
 
         // variable for skill scaling
-		RE::ActorValue associatedSkill = RE::ActorValue::kNone;
+        RE::ActorValue associatedSkill = RE::ActorValue::kNone;
         bool isSmithable = false;
 
         // Check if any item is marked by Junk It as junk
         bool isJunkItCandidate = false;
         if (Settings::bHideJunkItItems && JunkIt::API) {
-            if (JunkIt::API->IsAnyJunkForForm(a_this)) {
+            if (JunkIt::API->IsAnyJunkForForm(a_item)) {
                 isJunkItCandidate = true;
             }
         }
@@ -436,16 +315,16 @@ namespace LootHook
         // Tool Requirements Check
         bool isToolCandidate = false;
         if (Settings::bEnableToolRequirements) {
-            isToolCandidate = ToolRequirements::Manager::GetSingleton()->IsLootCandidate(a_this);
+            isToolCandidate = ToolRequirements::Manager::GetSingleton()->IsLootCandidate(a_item);
         }
 
         // Check Blacklists first
         bool isBlacklisted = false;
-        if (auto file = a_this->GetFile(0)) {
+        if (auto file = a_item->GetFile(0)) {
             const char* modName = file->GetFilename().data();
             auto CompareModName = [&](const std::string& listName) {
                 return _stricmp(modName, listName.c_str()) == 0;
-            };
+                };
 
             if (std::find_if(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), CompareModName) != Settings::blacklistedModsList.end()) {
                 isBlacklisted = true;
@@ -464,15 +343,20 @@ namespace LootHook
             currentHideChance = 100.0f;
         }
         else if (isClutter) {
+            bool isGold = (formID == 0x0000000F);
             bool isMiscBlacklisted = HasKeywordFromList(Settings::miscHideKeywordsList);
 
-            // If the misc item isn't specifically blacklisted and is neither a Junk It nor Tool Requirement candidate, show it
-            if (!isMiscBlacklisted && !isJunkItCandidate && !isToolCandidate) return true;
+            // If the misc item isn't specifically blacklisted, isn't gold, and is neither a Junk It nor Tool Requirement candidate, show it
+            if (!isMiscBlacklisted && !isJunkItCandidate && !isToolCandidate && !isGold) return false;
 
             // Only set to shouldHide if it is actually blacklisted by the user!
             if (isMiscBlacklisted) {
                 shouldHide = true;
                 currentHideChance = Settings::fHideChanceMisc;
+            }
+            else if (isGold) {
+                shouldHide = true;
+                currentHideChance = Settings::fHideChanceGold;
             }
 
             // Clutter items are never worn
@@ -482,8 +366,8 @@ namespace LootHook
         else {
             // Special handling for backpacks - armor/clothing with ModBack slot (47)
             bool isBackpack = false;
-            if (a_this->IsArmor()) {
-                auto armor = static_cast<RE::TESObjectARMO*>(a_this);
+            if (a_item->IsArmor()) {
+                auto armor = static_cast<RE::TESObjectARMO*>(a_item);
                 if (armor->GetSlotMask().any(RE::BIPED_MODEL::BipedObjectSlot::kModBack)) {
                     isBackpack = true;
                 }
@@ -491,35 +375,35 @@ namespace LootHook
 
             // Static whitelists: Items above value threshold or with specific keywords (uniques, artifacts, etc.) are always lootable (skip if it's a backpack)
             if (!isBackpack) {
-				// Check if the item is a Junk It or missing tool candidate. If neither, it may be whitelisted based on value or keywords.
+                // Check if the item is a Junk It or missing tool candidate. If neither, it may be whitelisted based on value or keywords.
                 if (!isJunkItCandidate && !isToolCandidate) {
                     // value/weight threshold
                     if (Settings::fValueWeightThresholdForLoot > 0.0f) {
-                        float weight = a_this->GetWeight();
-                        float valWeight = (weight > 0.0f) ? (a_this->GetGoldValue() / weight) : (a_this->GetGoldValue() > 0 ? 999999.0f : 0.0f);
-                        if (valWeight >= Settings::fValueWeightThresholdForLoot) return true;
+                        float weight = a_item->GetWeight();
+                        float valWeight = (weight > 0.0f) ? (a_item->GetGoldValue() / weight) : (a_item->GetGoldValue() > 0 ? 999999.0f : 0.0f);
+                        if (valWeight >= Settings::fValueWeightThresholdForLoot) return false;
                     }
 
                     // value threshold
-                    if (a_this->GetGoldValue() >= Settings::fValueThresholdForLoot) return true;
-                    if (a_this->HasKeywordInArray(Settings::uniqueKeywords, false)) return true;
+                    if (a_item->GetGoldValue() >= Settings::fValueThresholdForLoot) return false;
+                    if (a_item->HasKeywordInArray(Settings::uniqueKeywords, false)) return false;
                 }
             }
 
             // Option: Whitelist all naturally enchanted items (skip if it's a backpack, or a Junk It or missing tool candidate)
             if (Settings::bAlwaysShowEnchanted && !isBackpack && !isJunkItCandidate && !isToolCandidate) {
-                auto enchantable = a_this->As<RE::TESEnchantableForm>();
-                if (enchantable && enchantable->formEnchanting) return true;
+                auto enchantable = a_item->As<RE::TESEnchantableForm>();
+                if (enchantable && enchantable->formEnchanting) return false;
             }
 
             // Category detection (Armor, Weapon, Clothing, Jewelry)
-            bool isWeapon = a_this->IsWeapon();
+            bool isWeapon = a_item->IsWeapon();
             bool isArmor = false, isClothing = false, isJewelry = false;
             bool isHead = false, isChest = false, isArms = false, isLegs = false, isShield = false;
 
             // Categorize armor types and body slots (skip if it's a backpack)
-            if (a_this->IsArmor() && !isBackpack) {
-                auto armor = static_cast<RE::TESObjectARMO*>(a_this);
+            if (a_item->IsArmor() && !isBackpack) {
+                auto armor = static_cast<RE::TESObjectARMO*>(a_item);
                 auto CheckSlot = [&](RE::BIPED_MODEL::BipedObjectSlot a_slot) -> bool {
                     return armor->GetSlotMask().any(a_slot);
                 };
@@ -532,25 +416,25 @@ namespace LootHook
                 else {
                     // Categorize by body slots for granular control
                     isHead = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHead) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHair) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCirclet);
 
                     isChest = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kBody) ||
-                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
-                              CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary);
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestPrimary) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModChestSecondary);
 
                     isArms = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kHands) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kForearms) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModShoulder) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmLeft) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModArmRight);
 
                     isLegs = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kFeet) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
-                             CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kCalves) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisPrimary) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModPelvisSecondary) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegLeft) ||
+                        CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kModLegRight);
 
                     isShield = CheckSlot(RE::BIPED_MODEL::BipedObjectSlot::kShield);
 
@@ -571,7 +455,7 @@ namespace LootHook
                     associatedSkill = RE::ActorValue::kHeavyArmor;
                 }
                 else {
-					// If it's clothing or an unknown armor type, default to Pickpocket for skill scaling
+                    // If it's clothing or an unknown armor type, default to Pickpocket for skill scaling
                     associatedSkill = RE::ActorValue::kPickpocket;
                 }
             }
@@ -587,7 +471,7 @@ namespace LootHook
                 shouldHide = Settings::bUnlootableWeapons;
                 requireWorn = Settings::bWeaponsWornOnly;
 
-                auto weap = static_cast<RE::TESObjectWEAP*>(a_this);
+                auto weap = static_cast<RE::TESObjectWEAP*>(a_item);
                 switch (weap->GetWeaponType()) {
                 case RE::WEAPON_TYPE::kBow:
                 case RE::WEAPON_TYPE::kCrossbow:
@@ -646,14 +530,14 @@ namespace LootHook
         }
 
         // If the item type isn't configured to be hidden, marked as junk or missing a tool, allow it
-        if (!shouldHide && !isJunkItCandidate && !isToolCandidate) return true;
+        if (!shouldHide && !isJunkItCandidate && !isToolCandidate) return false;
 
-        // From here on, 'targetRef' is guaranteed to be a valid owner from history
-        auto baseObj = targetRef->GetBaseObject();
-        if (!baseObj) return true;
+        // From here on, 'a_targetRef' is guaranteed to be a valid owner from history
+        auto baseObj = a_targetRef->GetBaseObject();
+        if (!baseObj) return false;
 
 
-        auto actor = targetRef->As<RE::Actor>();
+        auto actor = a_targetRef->As<RE::Actor>();
         RE::Actor* sourceActor = actor;
         bool isAshGhostCorpseContainer = false;
 
@@ -661,7 +545,7 @@ namespace LootHook
             // Detect if the target are Ash Piles, Ghost Remains or a custom corpse container
             auto formType = baseObj->GetFormType();
             bool isActivator = (formType == RE::FormType::Activator);
-            bool isDynamicContainer = (formType == RE::FormType::Container && (targetRef->GetFormID() >> 24) == 0xFF);
+            bool isDynamicContainer = (formType == RE::FormType::Container && (a_targetRef->GetFormID() >> 24) == 0xFF);
             // Specialized handling for non-actor corpse containers/activator (e.g. Ash Piles, FEC Frozen Containers)
             if (isActivator || isDynamicContainer) {
                 // Default true for activators (Ash Piles)
@@ -676,7 +560,7 @@ namespace LootHook
 
                         // If Shadow of Skyrim is detected, all of its various backpack containers are excluded from hiding
                         if (_stricmp(fileName, "Shadow of Skyrim.esp") == 0) {
-                            return true;
+                            return false;
                         }
 
                         // If FEC or Maximum Carnage/Destruction are detected, their standalone corpse containers are included to allow hiding their contents
@@ -692,7 +576,7 @@ namespace LootHook
 
                 // Find the original actor that turned into this ash pile
                 std::lock_guard<std::mutex> lock(ashPileMutex);
-                auto it = s_ashPileMap.find(targetRef->GetFormID());
+                auto it = s_ashPileMap.find(a_targetRef->GetFormID());
                 if (it != s_ashPileMap.end()) {
                     // Check if the handle is valid before getting the actor
                     if (it->second) sourceActor = it->second.get().get();
@@ -706,8 +590,8 @@ namespace LootHook
                             RE::ActorHandle handle = processLists->highActorHandles[i];
                             if (auto loadedActor = handle.get().get()) {
                                 if (auto xAsh = loadedActor->extraList.GetByType<RE::ExtraAshPileRef>()) {
-                                    if (xAsh->ashPileRef.get().get() == targetRef) {
-                                        s_ashPileMap[targetRef->GetFormID()] = handle;
+                                    if (xAsh->ashPileRef.get().get() == a_targetRef) {
+                                        s_ashPileMap[a_targetRef->GetFormID()] = handle;
                                         sourceActor = loadedActor;
                                         break;
                                     }
@@ -715,7 +599,7 @@ namespace LootHook
                             }
                         }
                     }
-                    if (!sourceActor) s_ashPileMap[targetRef->GetFormID()] = RE::ActorHandle();
+                    if (!sourceActor) s_ashPileMap[a_targetRef->GetFormID()] = RE::ActorHandle();
                     if (s_ashPileMap.size() > 20) s_ashPileMap.clear();
                 }
 
@@ -726,21 +610,21 @@ namespace LootHook
 
         // Never filter items on living followers, regardless of UI state
         // This should prevent NFF/AFT/EFF framework scripts from being blocked
-        if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return true;
+        if (actor && !actor->IsDead() && !isAshGhostCorpseContainer && actor->IsPlayerTeammate()) return false;
 
         if (sourceActor) {
             // Check Base-ID whitelist (e.g. Gunjar) to prevent progression blockers
             auto npcBaseID = sourceActor->GetBaseObject()->GetFormID();
             if (std::binary_search(Settings::excludedNPCBaseIDs.begin(), Settings::excludedNPCBaseIDs.end(), npcBaseID)) {
-                return true;
+                return false;
             }
 
             // Check if the actor is a Nemesis from Shadow of Sykrim. Items on NPCs with these keywords will always be visible so the player is able to get them back
             if (sourceActor->HasKeywordString("_Nemesis") || sourceActor->HasKeywordString("_ValidateNemesis")) {
-                return true;
+                return false;
             }
         }
-        
+
         // Check if the actor is in a "knocked out" state (bleeding out or unconscious)
         // This increases potential compatibility with death alternative or knock-out mods 
         // that change the actor's state to incapacitated instead of killing them
@@ -750,7 +634,7 @@ namespace LootHook
             if (actorState && (actorState->IsBleedingOut() || actorState->IsUnconscious() || actorState->GetLifeState() == RE::ACTOR_LIFE_STATE::kDying)) isKnockedOut = true;
         }
 
-		// Check if the player is currently sneaking
+        // Check if the player is currently sneaking
         bool isPlayerSneaking = false;
         if (player) {
             isPlayerSneaking = player->IsSneaking();
@@ -758,7 +642,7 @@ namespace LootHook
 
         // Determine if the player is attempting to pickpocket the target 
         // (actor is alive, not knocked out, container is open, and player is sneaking)
-        bool isPickpocketing = sourceActor && !sourceActor->IsDead() && !isKnockedOut && (isContainerOpen || isLootMenuOpen) && isPlayerSneaking;
+        bool isPickpocketing = sourceActor && !sourceActor->IsDead() && !isKnockedOut && (a_isContainerOpen || a_isLootMenuOpen) && isPlayerSneaking;
 
         // Valid target check: The item is eligible for hiding if it's owned by a dead actor, 
         // a knocked-out actor, a specialized corpse container, or via pickpocketing (if enabled)
@@ -766,28 +650,28 @@ namespace LootHook
 
         if (isValidTarget) {
 
-			// Early exit if no pickpocketing and all death categories are disabled
+            // Early exit if no pickpocketing and all death categories are disabled
             if (!isPickpocketing && !Settings::bApplyToPreDead && !Settings::bApplyToNPCKills && !Settings::bApplyToPlayerKills) {
-                return true;
+                return false;
             }
 
             // If the item is a tool candidate, check if the required tool is missing.
             // Tools are bypassed during pickpocketing and for Ash Piles.
             bool isToolMissing = false;
             if (isToolCandidate && !isPickpocketing && !isAshGhostCorpseContainer) {
-                isToolMissing = ToolRequirements::Manager::GetSingleton()->IsToolMissing(a_this, sourceActor);
+                isToolMissing = ToolRequirements::Manager::GetSingleton()->IsToolMissing(a_item, sourceActor);
             }
 
             // Death category check: Determine the death category and apply category-specific settings
             if (!isPickpocketing) {
-				// Fallback logic for orphans
+                // Fallback logic for orphans
                 CorpseCategory category = CorpseCategory::kPlayerKill;
 
                 if (sourceActor && sourceActor->IsDead()) {
                     category = DeathTracker::GetSingleton()->GetCategory(sourceActor);
                 }
                 else if (isAshGhostCorpseContainer) {
-                    if ((targetRef->GetFormID() >> 24) == 0xFF) {
+                    if ((a_targetRef->GetFormID() >> 24) == 0xFF) {
                         category = CorpseCategory::kPlayerKill;
                     }
                     else {
@@ -795,9 +679,9 @@ namespace LootHook
                     }
                 }
 
-                if (category == CorpseCategory::kPrePlacedDead && !Settings::bApplyToPreDead) return true;
-                if (category == CorpseCategory::kNPCKill && !Settings::bApplyToNPCKills) return true;
-                if (category == CorpseCategory::kPlayerKill && !Settings::bApplyToPlayerKills) return true;
+                if (category == CorpseCategory::kPrePlacedDead && !Settings::bApplyToPreDead) return false;
+                if (category == CorpseCategory::kNPCKill && !Settings::bApplyToNPCKills) return false;
+                if (category == CorpseCategory::kPlayerKill && !Settings::bApplyToPlayerKills) return false;
             }
 
             bool isQuestObject = false;
@@ -807,86 +691,83 @@ namespace LootHook
             bool foundInNPCInventory = false;
             bool confirmedJunkIt = false;
 
-            RE::TESObjectREFR* inventoryOwner = sourceActor ? sourceActor : targetRef;
+            RE::TESObjectREFR* inventoryOwner = sourceActor ? sourceActor : a_targetRef;
 
-            // Fetch live inventory data from the confirmed owner
-            auto changes = inventoryOwner->GetInventoryChanges();
-            if (changes && changes->entryList) {
-                for (auto* entry : *changes->entryList) {
-                    if (entry && entry->object && entry->object->GetFormID() == a_this->GetFormID()) {
-                        foundInNPCInventory = true;
-                        // Junk It detection for items marked as junk
-                        if (Settings::bHideJunkItItems && JunkIt::API) {
-                            if (JunkIt::API->IsJunk(entry)) {
+			// Directly check the inventory entry data provided by QuickLoot
+            if (a_entryData) {
+                foundInNPCInventory = true;
+
+                // Junk It detection for items marked as junk
+                if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(a_entryData)) {
+                    confirmedJunkIt = true;
+                }
+
+                if (a_entryData->IsQuestObject()) isQuestObject = true;
+                if (a_entryData->IsWorn()) isWorn = true;
+                // Check for individual enchanted items in the inventory if the setting is enabled
+                if (a_entryData->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
+
+                // If the item has been modified by the player it should be considered as "player-owned" and not hidden
+                if (Settings::bProtectPlayerModifiedGear && a_entryData->extraLists) {
+                    for (auto* xList : *a_entryData->extraLists) {
+                        if (xList && (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                            xList->HasType(RE::ExtraDataType::kEnchantment) ||
+                            (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth)))) {
+                            isPlayerModified = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            else {
+				// Now fetch dynamic changes (like Worn or Player Modified) if they exist yet
+                auto changes = inventoryOwner->GetInventoryChanges();
+                if (changes && changes->entryList) {
+                    for (auto* entry : *changes->entryList) {
+                        if (entry && entry->object && entry->object->GetFormID() == a_item->GetFormID()) {
+                            if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(entry)) {
                                 confirmedJunkIt = true;
                             }
-                        }
+                            if (entry->IsQuestObject()) isQuestObject = true;
+                            if (entry->IsWorn()) isWorn = true;
+                            if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
 
-                        if (entry->IsQuestObject()) isQuestObject = true;
-                        if (entry->IsWorn()) isWorn = true;
-                        // Check for individual enchanted items in the inventory if the setting is enabled
-                        if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
-                        
-						// If the item has been modified by the player it should be considered as "player-owned" and not hidden
-                        if (Settings::bProtectPlayerModifiedGear && entry->extraLists) {
-                            for (auto* xList : *entry->extraLists) {
-                                if (xList) {
-                                    if (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                            if (Settings::bProtectPlayerModifiedGear && entry->extraLists) {
+                                for (auto* xList : *entry->extraLists) {
+                                    if (xList && (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
                                         xList->HasType(RE::ExtraDataType::kEnchantment) ||
-                                        (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth))) {
+                                        (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth)))) {
                                         isPlayerModified = true;
                                         break;
                                     }
                                 }
                             }
+                            break;
                         }
-                        break;
                     }
                 }
-            }
-
-			// If the item wasn't found in the dynamic inventory changes, it might still be in the base container data (e.g. pre-looted corpse or static NPC inventory)
-            if (!foundInNPCInventory && ContainerHasItem(inventoryOwner, a_this, false)) {
-                foundInNPCInventory = true;
-
-                // Junk It fallback check
-                if (isJunkItCandidate) {
+                // Fallback for fresh corpses: If no dynamic changes exist, but it's a Junk It candidate, confirm it.
+                if (isJunkItCandidate && !confirmedJunkIt) {
                     confirmedJunkIt = true;
                 }
-
-            }
-
-            // If an item is still rendered by QuickLoot but missing from inventory, hide it
-            if (!foundInNPCInventory) {        
-                // Never aggressively hide items if the big ContainerMenu is open
-                if (isContainerOpen) return true;
-
-                // If the player owns it, it's not a UI-Lag artifact, it's the player's inventory being queried
-                if (isPlayerLoaded && ContainerHasItem(player, a_this, false)) return true;
-
-                // Hide any ghost item during QuickLoot
-                if (isLootMenuOpen) return false;
-
-                // Default to true for background scripts and spells
-                return true;
             }
 
             // If the item is naturally allowed, not confirmed as junk, and no tool is missing, allow it
-            if (!shouldHide && !confirmedJunkIt && !isToolMissing) {
-                return true;
+            if (!shouldHide && !isToolMissing && !confirmedJunkIt) {
+                return false;
             }
-
+            
             // Safety: Never hide Quest Items, specifically whitelisted enchanted gear or player-modified items (e.g. via tempering or enchanting)
-            if (isQuestObject || isExtraEnchanted || isPlayerModified)  return true;
+            if (isQuestObject || isExtraEnchanted || isPlayerModified)  return false;
 
             // If the item is missing a required tool, hide it
             if (isToolMissing) {
-                return false;
+                return true;
             }
 
             // If the item is confirmed as junk, hide it
             if (confirmedJunkIt) {
-                return false;
+                return true;
             }
 
             // skill hide chance reduction
@@ -903,17 +784,17 @@ namespace LootHook
                         totalReduction += (std::clamp(smithingLevel, 0.0f, 100.0f) / 100.0f) * Settings::fMaxSmithingHideReduction;
                     }
                 }
-                
+
                 if (totalReduction > 0.0f) {
                     currentHideChance -= totalReduction;
                     if (currentHideChance < 0.0f) currentHideChance = 0.0f;
                 }
             }
-            
+
 
             // Apply deterministic 'random' hiding based on the actor-item seed
             if (currentHideChance < 100.0f) {
-                uint32_t seed = targetRef->GetFormID() ^ a_this->GetFormID();
+                uint32_t seed = a_targetRef->GetFormID() ^ a_item->GetFormID();
 
                 seed = (seed ^ 61) ^ (seed >> 16);
                 seed = seed + (seed << 3);
@@ -922,22 +803,110 @@ namespace LootHook
                 seed = seed ^ (seed >> 15);
 
                 float randomVal = static_cast<float>(seed % 10000) / 100.0f;
-                if (randomVal >= currentHideChance) return true;
+                if (randomVal >= currentHideChance) return false;
             }
 
             // Final decision based on 'WornOnly' setting
             if (actor && requireWorn && !isAshGhostCorpseContainer) {
                 // Hide only if worn
-                if (isWorn) return false;
+                if (isWorn) return true;
             }
             else if (isAshGhostCorpseContainer) {
                 // Specialized containers lose the 'isWorn' flag, so hide them forcefully if hiding is enabled
-                return false;
+                return true;
             }
-            // Hide regardless of worn status
-            else return false;
+            else return true;
         }
-        return true;
+        return false;
+    }
+
+    // QuickLoot API Handler: Filters the actual inventory array before QuickLoot renders it
+    void HandleQuickLootInventory(QuickLoot::API::Events::ModifyInventoryEvent* a_event) {
+        if (!Settings::bEnableMod || !a_event) return;
+
+        auto containerRef = a_event->container.get().get();
+        if (!containerRef) return;
+
+		// Iterate backwards because elements from the array are being removed
+        for (int i = static_cast<int>(a_event->inventory.size()) - 1; i >= 0; --i) {
+            auto& stack = a_event->inventory[i];
+            if (stack.entry && stack.entry->object) {
+
+                bool hide = ShouldHideItem(stack.entry->object, containerRef, false, true, stack.entry);
+
+                if (hide) {
+                    delete stack.entry;
+                    a_event->inventory.erase(a_event->inventory.begin() + i);
+                }
+            }
+        }
+    }
+
+    // Core logic to determine if an item should be shown or hidden
+    bool ProcessItem(RE::TESBoundObject* a_this, bool originalResult)
+    {
+        // Abort if mod is disabled or the item is natively unplayable
+        if (!Settings::bEnableMod) return originalResult;
+        if (!originalResult) return false;
+
+        auto ui = RE::UI::GetSingleton();
+        if (!ui) return true;
+
+        // UI Context check
+        if (ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::MagicMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::FavoritesMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::BarterMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) ||
+            ui->IsMenuOpen(RE::GiftMenu::MENU_NAME)) {
+            return true;
+        }
+
+        // Check if the ContainerMenu exists in memory (covers opening phase before IsMenuOpen is true)
+        auto menu = ui->GetMenu(RE::ContainerMenu::MENU_NAME);
+        bool isContainerOpen = menu.get() != nullptr;
+
+        RE::TESObjectREFR* targetRef = nullptr;
+
+        if (isContainerOpen) {
+            // Directly ask the menu which container is beeing looted
+            auto containerMenu = static_cast<RE::ContainerMenu*>(menu.get());
+            if (containerMenu) {
+                auto handle = containerMenu->GetTargetRefHandle();
+                RE::NiPointer<RE::TESObjectREFR> refPtr;
+                if (RE::TESObjectREFR::LookupByHandle(handle, refPtr)) {
+                    RE::TESObjectREFR* lootTarget = refPtr.get();
+                    if (lootTarget) {
+                        auto base = lootTarget->GetBaseObject();
+                        bool isSpecial = base && (base->Is(RE::FormType::Activator) || (base->Is(RE::FormType::Container) && (lootTarget->GetFormID() >> 24) == 0xFF));
+
+                        bool corpseHasItem = ContainerHasItem(lootTarget, a_this, isSpecial);
+
+                        // Protect the player's inventory from being hidden when the ContainerMenu is open
+                        // If the player owns this item, it always gets shown
+                        auto player = RE::PlayerCharacter::GetSingleton();
+                        bool playerHasItem = player && player->Is3DLoaded() && ContainerHasItem(player, a_this, false);
+
+                        if (!corpseHasItem && playerHasItem) {
+                            return true;
+                        }
+
+                        targetRef = lootTarget;
+                    }
+                }
+            }
+        }
+        else {
+            targetRef = GetCrosshairTarget(a_this);
+        }
+        
+        // If there's still no target, show the item as a failsafe
+        if (!targetRef) {
+            return true;
+        }
+
+        // Send to central logic (Invert result since ShouldHideItem returns true when an item should be hidden)
+        return !ShouldHideItem(a_this, targetRef, isContainerOpen, false);
     }
 
     bool Hook_ARMO_GetPlayable(RE::TESObjectARMO* a_this) {
@@ -954,6 +923,10 @@ namespace LootHook
 
     bool Hook_ALCH_GetPlayable(RE::AlchemyItem* a_this) {
         return ProcessItem(a_this, original_ALCH_GetPlayable(a_this));
+    }
+
+    bool Hook_INGR_GetPlayable(RE::IngredientItem* a_this) {
+        return ProcessItem(a_this, original_INGR_GetPlayable(a_this));
     }
 
     bool Hook_BOOK_GetPlayable(RE::TESObjectBOOK* a_this) {
@@ -985,6 +958,10 @@ namespace LootHook
         // Hook GetPlayable for ALCH (Food, Poison and Potions)
         REL::Relocation<std::uintptr_t> alchVTable(RE::VTABLE_AlchemyItem[0]);
         original_ALCH_GetPlayable = alchVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_ALCH_GetPlayable));
+
+        // Hook GetPlayable for INGR (Ingredients)
+        REL::Relocation<std::uintptr_t> ingrVTable(RE::VTABLE_IngredientItem[0]);
+        original_INGR_GetPlayable = ingrVTable.write_vfunc(0x19, reinterpret_cast<std::uintptr_t>(Hook_INGR_GetPlayable));
 
         // Hook GetPlayable for BOOK (Books, Notes and Journals)
         REL::Relocation<std::uintptr_t> bookVTable(RE::VTABLE_TESObjectBOOK[0]);

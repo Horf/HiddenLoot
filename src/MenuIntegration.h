@@ -222,7 +222,7 @@ namespace MenuIntegration
         HelpMarker(Translation::Get("$HL_Desc_Pickpocket", "If enabled, settings apply also while pickpocketing NPCs.").c_str());
 
         ImGuiMCP::Spacing();
-        ImGuiMCP::SeparatorText(Translation::Get("$HL_Sec_Clutter", "Clutter Items (Misc, Food, Books)").c_str());
+        ImGuiMCP::SeparatorText(Translation::Get("$HL_Sec_Clutter", "Clutter Items (Misc, Food, Ingredients, Books)").c_str());
         static char miscKeywordBuffer[256];
         if (miscKeywordBuffer[0] == '\0' && !Settings::sMiscHideKeywords.empty()) {
             strncpy_s(miscKeywordBuffer, Settings::sMiscHideKeywords.c_str(), sizeof(miscKeywordBuffer) - 1);
@@ -234,11 +234,23 @@ namespace MenuIntegration
             Settings::LoadGameData();
             changed = true;
         }
-        HelpMarker(Translation::Get("$HL_Desc_ClutterBL", "Comma-separated list of EditorID keywords (e.g., VendorItemClutter). Applies to MISC, ALCH, SCRL and BOOK. Quest items, gold, lockpicks, and gems are always protected.").c_str());
+        HelpMarker(Translation::Get("$HL_Desc_ClutterBL", "Comma-separated list of EditorID keywords (e.g., VendorItemClutter). Applies to MISC, ALCH, INGR, SCRL and BOOK. Quest items, lockpicks, and gems are always protected.").c_str());
 
         ImGuiMCP::SliderFloat(Translation::GetImGui("$HL_Opt_ClutterChance", "Clutter Hide Chance (%)").c_str(), &Settings::fHideChanceMisc, 0.0f, 100.0f, "%.1f");
         if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
         HelpMarker(Translation::Get("$HL_Desc_ClutterChance", "Percentage chance that a blacklisted clutter item will be hidden. Completely separate from the global hide chance.").c_str());
+
+        ImGuiMCP::Spacing();
+        if (ImGuiMCPComponents::ToggleButton(Translation::GetImGui("$HL_Opt_HideGold", "Allow Hiding Gold").c_str(), &Settings::bHideGold)) changed = true;
+        HelpMarker(Translation::Get("$HL_Desc_HideGold", "If enabled, gold can be hidden from corpses.").c_str());
+
+        if (Settings::bHideGold) {
+            ImGuiMCP::Indent(15.0f);
+            ImGuiMCP::SliderFloat(Translation::GetImGui("$HL_Opt_GoldChance", "Gold Hide Chance (%)").c_str(), &Settings::fHideChanceGold, 0.0f, 100.0f, "%.1f");
+            if (ImGuiMCP::IsItemDeactivatedAfterEdit()) changed = true;
+            HelpMarker(Translation::Get("$HL_Desc_GoldChance", "Percentage chance that gold will be hidden. Separate from the global hide chance.").c_str());
+            ImGuiMCP::Unindent(15.0f);
+        }
 
         if (changed) Settings::Save();
     }

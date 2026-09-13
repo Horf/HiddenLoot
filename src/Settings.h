@@ -21,6 +21,7 @@
 #include <RE/B/BGSKeyword.h>
 #include <RE/B/BSFixedString.h>
 #include <RE/B/BSCoreTypes.h>
+
 #include <RE/T/TESBoundObject.h>
 #include <RE/T/TESDataHandler.h>
 #include <RE/T/TESForm.h>
@@ -87,6 +88,9 @@ namespace Settings
 
     // Hide chances
     inline float fHideChanceMisc = 100.0f;
+
+    inline bool bHideGold = false;
+    inline float fHideChanceGold = 100.0f;
 
     inline bool bUseCategoryHideChances = false;
     inline float fHideChanceArmor = 100.0f;
@@ -269,6 +273,10 @@ namespace Settings
                     else if (key == "fMiscHideChance") {
                         fHideChanceMisc = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
                     }
+                    else if (key == "bHideGold") bHideGold = isTrue;
+                    else if (key == "fHideChanceGold") {
+                        fHideChanceGold = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
+                    }
 					else if (key == "bUseCategoryHideChances") bUseCategoryHideChances = isTrue;
                     else if (key == "fHideChanceArmor") {
                         fHideChanceArmor = std::clamp(ParseFloatSafe(value, 100.0f, key), 0.0f, 100.0f);
@@ -301,7 +309,7 @@ namespace Settings
             }
 			file.close();
         }
-        if (!std::filesystem::exists(iniPath) || keysFound < 45) Save();
+        if (!std::filesystem::exists(iniPath) || keysFound < 47) Save();
     }
 
     inline void LoadGameData() {
@@ -576,7 +584,12 @@ namespace Settings
             file << "sMiscHideKeywords=" << sMiscHideKeywords << "\n\n";
 
             file << "; Chance in percent (0.0 to 100.0) that a blacklisted misc item gets hidden.\n";
-            file << "fMiscHideChance=" << fHideChanceMisc << "\n";
+            file << "fMiscHideChance=" << fHideChanceMisc << "\n\n";
+
+            file << "; If true, allows Gold to be hidden from corpses.\n";
+            file << "bHideGold=" << (bHideGold ? "true" : "false") << "\n";
+            file << "; Chance in percent (0.0 to 100.0) that gold will be hidden.\n";
+            file << "fHideChanceGold=" << fHideChanceGold << "\n";
         }
     }
 }

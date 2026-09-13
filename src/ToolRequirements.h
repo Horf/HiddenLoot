@@ -272,6 +272,9 @@ namespace ToolRequirements
 
             auto keywordForm = a_lootItem->As<RE::BGSKeywordForm>();
 
+            bool isTargetedByAnyRule = false;
+            bool hasValidToolForAnyRule = false;
+
             for (const auto& rule : _rules) {
                 bool isTargetedItem = false;
                 
@@ -323,6 +326,9 @@ namespace ToolRequirements
                     if (actorExcluded) continue;
                 }
 
+                // If reached here, a valid rule targets this item and actor!
+                isTargetedByAnyRule = true;
+
                 bool hasTool = false;
                 {
                     std::shared_lock<std::shared_mutex> readLock(_mutex);
@@ -339,8 +345,17 @@ namespace ToolRequirements
                     }
                 }
 
-                if (!hasTool) return true;
+                // If the player has the tool for this specific rule, the item is unlocked!
+                if (hasTool) {
+                    hasValidToolForAnyRule = true;
+                    break;
+                }
             }
+            // If it was targeted by a rule, but the player didn't had the tools for any of the rules that targeted it, hide it!
+            if (isTargetedByAnyRule && !hasValidToolForAnyRule) {
+                return true;
+            }
+
             return false;
         }
 
