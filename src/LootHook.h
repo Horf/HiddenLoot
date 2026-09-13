@@ -832,6 +832,13 @@ namespace LootHook
             auto& stack = a_event->inventory[i];
             if (stack.entry && stack.entry->object) {
 
+				// QuickPocket compatibility: If the item is not actually in the NPC's inventory, skip it
+                if (Settings::bIncludePickpocket) {
+                    if (!ContainerHasItem(containerRef, stack.entry->object, false)) {
+                        continue;
+                    }
+                }
+
                 bool hide = ShouldHideItem(stack.entry->object, containerRef, false, true, stack.entry);
 
                 if (hide) {
