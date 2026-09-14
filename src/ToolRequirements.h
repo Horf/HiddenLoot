@@ -399,8 +399,10 @@ namespace ToolRequirements
                 for (uint32_t i = 0; i < keywordForm->numKeywords; ++i) {
                     if (keywordForm->keywords[i]) {
                         RE::BSFixedString keywordString = keywordForm->keywords[i]->formEditorID;
-                        _keywordCounts[keywordString] += countChange;
-                        if (_keywordCounts[keywordString] < 0) _keywordCounts[keywordString] = 0;
+						if (!keywordString.empty()) {
+                            _keywordCounts[keywordString] += countChange;
+                            if (_keywordCounts[keywordString] < 0) _keywordCounts[keywordString] = 0;
+						}
                     }
                 }
             }

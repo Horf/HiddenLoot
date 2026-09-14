@@ -239,6 +239,43 @@ namespace LootHook
         return nullptr;
     }
 
+    // Safely retrieves extra data flags (Worn, Quest, Enchanted, PlayerModified)
+    // Prevents CTDs caused by other mods injecting corrupted null-pointers into the ExtraDataList
+    bool SafeCheckEntryData(RE::InventoryEntryData* a_entryData, bool& a_isWorn, bool& a_isQuestObject, bool& a_isExtraEnchanted, bool& a_isPlayerModified)
+    {
+        if (!a_entryData) return false;
+
+        // Scan the ExtraDataList for injected null-pointers
+        if (a_entryData->extraLists) {
+            for (auto* xList : *a_entryData->extraLists) {
+                if (!xList) {
+                    logs::warn("Hidden Loot: Corrupted item detected. FormID: {:08X}", a_entryData->object ? a_entryData->object->GetFormID() : 0);
+                    return false;
+                }
+            }
+        }
+
+        // If the list is clean, it is 100% safe to use the native vanilla functions
+        a_isQuestObject = a_entryData->IsQuestObject();
+        a_isWorn = a_entryData->IsWorn();
+        if (Settings::bAlwaysShowEnchanted && a_entryData->IsEnchanted()) {
+            a_isExtraEnchanted = true;
+        }
+
+        // Check for player modified status safely
+        if (Settings::bProtectPlayerModifiedGear && a_entryData->extraLists) {
+            for (auto* xList : *a_entryData->extraLists) {
+                if (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                    xList->HasType(RE::ExtraDataType::kEnchantment) ||
+                    (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth))) {
+                    a_isPlayerModified = true;
+                    break;
+                }
+            }
+        }
+        return true;
+    }
+
 	// Core logic to determine if an item should be hidden based on the current game state, player state, and item properties
     bool ShouldHideItem(RE::TESBoundObject* a_item, RE::TESObjectREFR* a_targetRef, bool a_isContainerOpen, bool a_isLootMenuOpen, RE::InventoryEntryData* a_entryData = nullptr)
     {
@@ -268,15 +305,17 @@ namespace LootHook
 
         // Mod specific whitelist checks
         if (auto file = a_item->GetFile(0)) {
-            const char* modName = file->GetFilename().data();
+            std::string_view modName(file->GetFilename());
 
-            auto CompareModName = [&](const std::string& listName) {
-                return _stricmp(modName, listName.c_str()) == 0;
+            if (!modName.empty()) {
+                auto CompareModName = [&](const std::string& listName) {
+                    return modName.length() == listName.length() && _strnicmp(modName.data(), listName.c_str(), modName.length()) == 0;
                 };
 
-            if (!Settings::whitelistedModsList.empty()) {
-                if (std::find_if(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), CompareModName) != Settings::whitelistedModsList.end()) {
-                    return false;
+                if (!Settings::whitelistedModsList.empty()) {
+                    if (std::find_if(Settings::whitelistedModsList.begin(), Settings::whitelistedModsList.end(), CompareModName) != Settings::whitelistedModsList.end()) {
+                        return false;
+                    }
                 }
             }
         }
@@ -317,16 +356,18 @@ namespace LootHook
             isToolCandidate = ToolRequirements::Manager::GetSingleton()->IsLootCandidate(a_item);
         }
 
-        // Check Blacklists first
+        // Blacklists Check
         bool isBlacklisted = false;
         if (auto file = a_item->GetFile(0)) {
-            const char* modName = file->GetFilename().data();
-            auto CompareModName = [&](const std::string& listName) {
-                return _stricmp(modName, listName.c_str()) == 0;
+            std::string_view modName(file->GetFilename());
+            if (!modName.empty()) {
+                auto CompareModName = [&](const std::string& listName) {
+                    return modName.length() == listName.length() && _strnicmp(modName.data(), listName.c_str(), modName.length()) == 0;
                 };
 
-            if (std::find_if(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), CompareModName) != Settings::blacklistedModsList.end()) {
-                isBlacklisted = true;
+                if (std::find_if(Settings::blacklistedModsList.begin(), Settings::blacklistedModsList.end(), CompareModName) != Settings::blacklistedModsList.end()) {
+                    isBlacklisted = true;
+                }
             }
         }
         if (!isBlacklisted && HasKeywordFromList(Settings::hideKeywordsList)) {
@@ -696,25 +737,10 @@ namespace LootHook
             if (a_entryData) {
                 foundInNPCInventory = true;
 
-                // Junk It detection for items marked as junk
-                if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(a_entryData)) {
-                    confirmedJunkIt = true;
-                }
-
-                if (a_entryData->IsQuestObject()) isQuestObject = true;
-                if (a_entryData->IsWorn()) isWorn = true;
-                // Check for individual enchanted items in the inventory if the setting is enabled
-                if (a_entryData->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
-
-                // If the item has been modified by the player it should be considered as "player-owned" and not hidden
-                if (Settings::bProtectPlayerModifiedGear && a_entryData->extraLists) {
-                    for (auto* xList : *a_entryData->extraLists) {
-                        if (xList && (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
-                            xList->HasType(RE::ExtraDataType::kEnchantment) ||
-                            (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth)))) {
-                            isPlayerModified = true;
-                            break;
-                        }
+                if (SafeCheckEntryData(a_entryData, isWorn, isQuestObject, isExtraEnchanted, isPlayerModified)) {
+                    // Junk It detection for items marked as junk
+                    if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(a_entryData)) {
+                        confirmedJunkIt = true;
                     }
                 }
             }
@@ -724,21 +750,9 @@ namespace LootHook
                 if (changes && changes->entryList) {
                     for (auto* entry : *changes->entryList) {
                         if (entry && entry->object && entry->object->GetFormID() == a_item->GetFormID()) {
-                            if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(entry)) {
-                                confirmedJunkIt = true;
-                            }
-                            if (entry->IsQuestObject()) isQuestObject = true;
-                            if (entry->IsWorn()) isWorn = true;
-                            if (entry->IsEnchanted() && Settings::bAlwaysShowEnchanted) isExtraEnchanted = true;
-
-                            if (Settings::bProtectPlayerModifiedGear && entry->extraLists) {
-                                for (auto* xList : *entry->extraLists) {
-                                    if (xList && (xList->HasType(RE::ExtraDataType::kTextDisplayData) ||
-                                        xList->HasType(RE::ExtraDataType::kEnchantment) ||
-                                        (!Settings::bIgnoreHealthExtraData && xList->HasType(RE::ExtraDataType::kHealth)))) {
-                                        isPlayerModified = true;
-                                        break;
-                                    }
+                            if (SafeCheckEntryData(entry, isWorn, isQuestObject, isExtraEnchanted, isPlayerModified)) {
+                                if (Settings::bHideJunkItItems && JunkIt::API && JunkIt::API->IsJunk(entry)) {
+                                    confirmedJunkIt = true;
                                 }
                             }
                             break;
@@ -746,9 +760,7 @@ namespace LootHook
                     }
                 }
                 // Fallback for fresh corpses: If no dynamic changes exist, but it's a Junk It candidate, confirm it.
-                if (isJunkItCandidate && !confirmedJunkIt) {
-                    confirmedJunkIt = true;
-                }
+                if (isJunkItCandidate && !confirmedJunkIt) confirmedJunkIt = true;
             }
 
             // If the item is naturally allowed, not confirmed as junk, and no tool is missing, allow it
@@ -832,6 +844,7 @@ namespace LootHook
             if (stack.entry && stack.entry->object) {
 
 				// QuickPocket compatibility: If the item is not actually in the NPC's inventory, skip it
+				// Not really needed for the current plugin loading order, still a good safety net for possible changes
                 if (Settings::bIncludePickpocket) {
                     if (!ContainerHasItem(containerRef, stack.entry->object, false)) {
                         continue;
