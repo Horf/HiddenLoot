@@ -5,6 +5,7 @@
 #include <SKSE/API.h>
 #include <SKSE/Logger.h>
 #include <SKSE/Interfaces.h>
+#include <SKSE/Translation.h>
 
 // ===== RE (Game Types) =====
 #include <RE/B/BSInputDeviceManager.h>
@@ -78,6 +79,9 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
         
         // Wait until all data forms (esp/esm) are loaded before caching forms
         if (a_msg->type == SKSE::MessagingInterface::kDataLoaded) {
+            // Register translation
+            SKSE::Translation::ParseTranslation("HiddenLoot");
+
 			// Register QuickLoot API listener
             if (GetModuleHandleA("QuickLootIE.dll")) {
                 if (QuickLoot::API::QuickLootAPI::Init("HiddenLoot", QuickLoot::API::ApiVersion::kV20)) {

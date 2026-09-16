@@ -8,6 +8,7 @@
 
 // ===== Project =====
 #include "SKSEMenuFramework.h"
+#include "MenuRefresh.h"
 #include "Settings.h"
 #include "Translation.h"
 
@@ -87,7 +88,7 @@ namespace MenuIntegration
         ImGuiMCP::Spacing();
         ImGuiMCP::SeparatorText(Translation::Get("$HL_Sec_Hotkey", "Hotkey Toggle").c_str());
         if (ImGuiMCPComponents::ToggleButton(Translation::GetImGui("$HL_Opt_EnableHotkey", "Enable Hotkey").c_str(), &Settings::bEnableHotkey)) changed = true;
-        HelpMarker(Translation::Get("$HL_Desc_EnableHotkey", "Allows you to toggle the mod on/off in-game using a key combination. (Re-open the loot menu or look away and back at the corpse to refresh it).").c_str());
+        HelpMarker(Translation::Get("$HL_Desc_EnableHotkey", "Allows you to toggle the mod on/off in-game using a key combination.").c_str());
 
         if (Settings::bEnableHotkey) {
             ImGuiMCP::Indent(15.0f);
@@ -252,7 +253,12 @@ namespace MenuIntegration
             ImGuiMCP::Unindent(15.0f);
         }
 
-        if (changed) Settings::Save();
+        if (changed) {
+            Settings::Save();
+
+            // Trigger global UI refresh
+            MenuRefresh::RefreshOpenLootMenus();
+        }
     }
 
     inline void Install()

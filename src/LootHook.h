@@ -82,6 +82,7 @@
 // ===== Project =====
 #include "DeathTracker.h"
 #include "JunkIt.h"
+#include "MenuRefresh.h"
 #include "Settings.h"
 #include "ToolRequirements.h"
 #include "Translation.h"
@@ -126,12 +127,16 @@ namespace LootHook
                             bool modifierConditionMet = (Settings::iToggleModifierKey == 0) || _modifierHeld;
                             if (modifierConditionMet) {
                                 Settings::bEnableMod = !Settings::bEnableMod;
-                                if (Settings::bEnableMod) {
-                                    RE::SendHUDMessage::ShowHUDMessage(Translation::Get("$HL_HUD_Enabled", "Hidden Loot: Enabled").c_str());
-                                }
-                                else {
-                                    RE::SendHUDMessage::ShowHUDMessage(Translation::Get("$HL_HUD_Disabled", "Hidden Loot: Disabled").c_str());
-                                }
+                                
+                                // Show HUD message
+                                std::string msg = Settings::bEnableMod ?
+                                    Translation::Get("$HL_HUD_Enabled", "Hidden Loot: Enabled") :
+                                    Translation::Get("$HL_HUD_Disabled", "Hidden Loot: Disabled");
+                                
+                                RE::SendHUDMessage::ShowHUDMessage(msg.c_str());
+
+                                // Trigger global UI refresh
+                                MenuRefresh::RefreshOpenLootMenus();
                             }
                         }
                     }
